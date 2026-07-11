@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pocket Tanks Clone</title>
+    <link rel="stylesheet" href="/src/style.css">
+  </head>
+  <body>
+    <div id="app">
+      
+      <!-- Lobby Screen -->
+      <div id="lobby" class="screen active">
+        <div class="glass-panel">
+          <h1>Artillery Multiplayer</h1>
+          
+          <div class="input-group">
+            <label>Nickname</label>
+            <input type="text" id="nickname" placeholder="Player 1" />
+          </div>
+          
+          <div class="actions">
+            <button id="btn-create" class="btn primary">Create Multiplayer Game</button>
+            <button id="btn-computer" class="btn secondary" style="margin-top: 10px;">Play vs Computer</button>
+            <div class="divider"><span>OR</span></div>
+            <div class="join-group">
+              <input type="text" id="room-code" placeholder="Room Code (e.g. ABCD)" />
+              <button id="btn-join" class="btn secondary">Join</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Waiting Room -->
+      <div id="waiting-room" class="screen">
+        <div class="glass-panel">
+          <h2>Room: <span id="display-room-code"></span></h2>
+          <div class="players-list" id="players-list"></div>
+          <button id="btn-start" class="btn primary" style="display:none">Start Game</button>
+        </div>
+      </div>
+      
+      <!-- Game Screen -->
+      <div id="game" class="screen">
+        <canvas id="game-canvas" width="800" height="600"></canvas>
+        
+        <div id="ui-overlay">
+          <div class="top-bar">
+            <div id="team-a-status" class="team-status">Team A: 100 HP</div>
+            <div id="turn-indicator">Waiting...</div>
+            <div id="team-b-status" class="team-status">Team B: 100 HP</div>
+          </div>
+          
+          <div id="controls" class="controls-panel disabled">
+            <div class="control-group">
+              <label>Angle: <span id="angle-val">45</span>°</label>
+              <input type="range" id="input-angle" min="0" max="180" value="45" />
+            </div>
+            <div class="control-group">
+              <label>Power: <span id="power-val">50</span></label>
+              <input type="range" id="input-power" min="10" max="150" value="50" />
+            </div>
+            <button id="btn-fire" class="btn danger">FIRE!</button>
+          </div>
+          
+          <div id="game-over-modal" class="hidden">
+            <h2 id="game-over-text"></h2>
+            <button id="btn-lobby" class="btn primary">Back to Lobby</button>
+          </div>
+        </div>
+      </div>
+      
+    </div>
+    
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
