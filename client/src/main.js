@@ -24,6 +24,10 @@ const inputPower = document.getElementById('input-power');
 const angleVal = document.getElementById('angle-val');
 const powerVal = document.getElementById('power-val');
 const btnFire = document.getElementById('btn-fire');
+const btnAngleMinus = document.getElementById('btn-angle-minus');
+const btnAnglePlus = document.getElementById('btn-angle-plus');
+const btnPowerMinus = document.getElementById('btn-power-minus');
+const btnPowerPlus = document.getElementById('btn-power-plus');
 
 const gameOverModal = document.getElementById('game-over-modal');
 const gameOverText = document.getElementById('game-over-text');
@@ -134,14 +138,26 @@ btnStart.onclick = () => {
   socket.emit('start-game');
 };
 
-inputAngle.oninput = (e) => {
-  angleVal.textContent = e.target.value;
-  if (myTurn) socket.emit('aim', { angle: parseInt(e.target.value) });
-};
-inputPower.oninput = (e) => {
-  powerVal.textContent = e.target.value;
-  if (myTurn) socket.emit('aim', { power: parseInt(e.target.value) });
-};
+function updateAim(angle, power) {
+  if (angle !== undefined) {
+    inputAngle.value = angle;
+    angleVal.textContent = angle;
+    if (myTurn) socket.emit('aim', { angle: parseInt(angle) });
+  }
+  if (power !== undefined) {
+    inputPower.value = power;
+    powerVal.textContent = power;
+    if (myTurn) socket.emit('aim', { power: parseInt(power) });
+  }
+}
+
+inputAngle.oninput = (e) => updateAim(e.target.value, undefined);
+inputPower.oninput = (e) => updateAim(undefined, e.target.value);
+
+btnAngleMinus.onclick = () => updateAim(Math.max(0, parseInt(inputAngle.value) - 1), undefined);
+btnAnglePlus.onclick = () => updateAim(Math.min(180, parseInt(inputAngle.value) + 1), undefined);
+btnPowerMinus.onclick = () => updateAim(undefined, Math.max(10, parseInt(inputPower.value) - 1));
+btnPowerPlus.onclick = () => updateAim(undefined, Math.min(150, parseInt(inputPower.value) + 1));
 
 btnFire.onclick = () => {
   if (!myTurn) return;

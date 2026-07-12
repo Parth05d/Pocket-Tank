@@ -120,7 +120,7 @@ export class Room {
     const seed = Math.floor(Math.random() * 10000);
     this.terrain = {
       seed: seed,
-      heightmap: generateTerrain(seed, 800, 600) // standard 800x600 logical size
+      heightmap: generateTerrain(seed, 1920, 1080) // standard 1920x1080 logical size
     };
     
     // Set up turn order (alternating teams A, B, A, B...)
@@ -136,7 +136,7 @@ export class Room {
     let i = 0;
     for (const [socketId, player] of this.players.entries()) {
       // spread players out across the width
-      const x = Math.floor(800 * ((i + 1) / (this.players.size + 1)));
+      const x = Math.floor(1920 * ((i + 1) / (this.players.size + 1)));
       player.position = { x: x, y: this.terrain.heightmap[x] };
       i++;
     }
@@ -203,9 +203,9 @@ export class Room {
         
         let hitX = -1; let hitY = -1;
         for (let point of path) {
-          if (point.x < 0 || point.x >= 800 || point.y >= 600) { hitX = point.x; hitY = point.y; break; }
+          if (point.x < 0 || point.x >= 1920 || point.y >= 1080) { hitX = point.x; hitY = point.y; break; }
           const px = Math.floor(point.x);
-          if (px >= 0 && px < 800 && point.y >= this.terrain.heightmap[px]) { hitX = point.x; hitY = point.y; break; }
+          if (px >= 0 && px < 1920 && point.y >= this.terrain.heightmap[px]) { hitX = point.x; hitY = point.y; break; }
         }
         
         if (hitX !== -1) {
@@ -232,14 +232,25 @@ export class Room {
   }
 
   advanceTurn() {
+    if (this.turnOrder.length === 0) return;
+    
+    let attempts = 0;
     this.currentTurnIndex = (this.currentTurnIndex + 1) % this.turnOrder.length;
     
-    // skip dead players
-    while(this.turnOrder.length > 0 && !this.players.get(this.turnOrder[this.currentTurnIndex]).alive) {
+    // skip dead or disconnected players
+    while(attempts < this.turnOrder.length) {
+      const p = this.players.get(this.turnOrder[this.currentTurnIndex]);
+      if (p && p.alive) {
+        break; // found a valid, alive player
+      }
       this.currentTurnIndex = (this.currentTurnIndex + 1) % this.turnOrder.length;
+      attempts++;
     }
 
-    this.startTurnTimer();
+    // Only start timer if we actually found someone to take a turn
+    if (attempts < this.turnOrder.length) {
+      this.startTurnTimer();
+    }
   }
 
   handleAim(socketId, data) {
@@ -285,7 +296,7 @@ export class Room {
     for (let point of path) {
       finalPath.push(point);
       // check bounds
-      if (point.x < 0 || point.x >= 800 || point.y >= 600) {
+      if (point.x < 0 || point.x >= 1920 || point.y >= 1080) {
         hitX = point.x;
         hitY = point.y;
         break; // out of bounds
@@ -293,7 +304,7 @@ export class Room {
       
       // check terrain collision
       const px = Math.floor(point.x);
-      if (px >= 0 && px < 800 && point.y >= this.terrain.heightmap[px]) {
+      if (px >= 0 && px < 1920 && point.y >= this.terrain.heightmap[px]) {
         hitX = point.x;
         hitY = point.y;
         break;
@@ -303,7 +314,7 @@ export class Room {
     let radius = 0;
     
     // 2. If it hit the ground, apply damage
-    if (hitX >= 0 && hitX < 800 && hitY < 600) {
+    if (hitX >= 0 && hitX < 1920 && hitY < 1080) {
        radius = 40; // bomb blast radius
        applyTerrainDelta(this.terrain.heightmap, hitX, hitY, radius);
        
@@ -323,7 +334,7 @@ export class Room {
          
          // Update tank Y position so it "falls" if terrain under it is destroyed
          const pX = Math.floor(p.position.x);
-         if (pX >= 0 && pX < 800) {
+         if (pX >= 0 && pX < 1920) {
            p.position.y = this.terrain.heightmap[pX];
          }
        }

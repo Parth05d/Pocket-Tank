@@ -103,16 +103,16 @@ export class GameRenderer {
   draw() {
     // 1. Sky Gradient
     const skyGrad = this.ctx.createLinearGradient(0, 0, 0, this.height);
-    skyGrad.addColorStop(0, '#0f172a');
-    skyGrad.addColorStop(1, '#1e293b');
+    skyGrad.addColorStop(0, '#000000'); // Nero
+    skyGrad.addColorStop(1, '#282828'); // Nero 95%
     this.ctx.fillStyle = skyGrad;
     this.ctx.fillRect(0, 0, this.width, this.height);
     
     // 2. Terrain
     if (this.terrainMap) {
-      const terrGrad = this.ctx.createLinearGradient(0, 0, 0, this.height);
-      terrGrad.addColorStop(0, '#475569');
-      terrGrad.addColorStop(1, '#1e293b');
+      const terrGrad = this.ctx.createLinearGradient(0, this.height * 0.3, 0, this.height);
+      terrGrad.addColorStop(0, '#CDC8BE'); // Sabbia (Sand/Dirt)
+      terrGrad.addColorStop(1, '#282828'); // Nero 95%
       this.ctx.fillStyle = terrGrad;
       this.ctx.beginPath();
       this.ctx.moveTo(0, this.height);
@@ -122,8 +122,8 @@ export class GameRenderer {
       this.ctx.lineTo(this.width, this.height);
       this.ctx.fill();
       
-      this.ctx.strokeStyle = '#22c55e';
-      this.ctx.lineWidth = 6;
+      this.ctx.strokeStyle = '#CDC8B9';
+      this.ctx.lineWidth = 4;
       this.ctx.lineJoin = 'round';
       this.ctx.beginPath();
       for (let x = 0; x < this.width; x++) {
@@ -137,8 +137,9 @@ export class GameRenderer {
     for (const p of this.players) {
       if (!p.alive) continue;
       
-      const teamColor = p.team === 'A' ? '#3b82f6' : '#ef4444';
-      const darkColor = p.team === 'A' ? '#1d4ed8' : '#b91c1c';
+      // Bianco for Team A, Rosso for Team B
+      const teamColor = p.team === 'A' ? '#FFFFFF' : '#F01E28';
+      const darkColor = p.team === 'A' ? '#CDC8BE' : '#8A0F15';
       
       const tx = p.position.x;
       const ty = p.position.y - 4; // lift slightly above ground
