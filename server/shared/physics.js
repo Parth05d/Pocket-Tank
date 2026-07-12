@@ -40,6 +40,8 @@ export function applyTerrainDelta(heightmap, impactX, impactY, radius) {
   const minX = Math.max(0, Math.floor(impactX - radius));
   const maxX = Math.min(heightmap.length - 1, Math.ceil(impactX + radius));
   
+  const changes = [];
+  
   for (let x = minX; x <= maxX; x++) {
     const dx = x - impactX;
     const dy = Math.sqrt(radius * radius - dx * dx);
@@ -51,8 +53,11 @@ export function applyTerrainDelta(heightmap, impactX, impactY, radius) {
     // If surface is above the bottom of the crater, push it down to the crater bottom
     if (heightmap[x] < craterBottomY) { 
         heightmap[x] = craterBottomY;
+        changes.push({ x, y: craterBottomY });
     }
   }
+  
+  return changes;
 }
 
 export function calculateTrajectory(startX, startY, angleDegrees, power, wind, gravity) {

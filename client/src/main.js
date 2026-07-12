@@ -28,6 +28,9 @@ const btnAngleMinus = document.getElementById('btn-angle-minus');
 const btnAnglePlus = document.getElementById('btn-angle-plus');
 const btnPowerMinus = document.getElementById('btn-power-minus');
 const btnPowerPlus = document.getElementById('btn-power-plus');
+const btnMoveLeft = document.getElementById('btn-move-left');
+const btnMoveRight = document.getElementById('btn-move-right');
+const movesVal = document.getElementById('moves-val');
 
 const gameOverModal = document.getElementById('game-over-modal');
 const gameOverText = document.getElementById('game-over-text');
@@ -59,6 +62,17 @@ socket.on('aim-changed', (data) => {
   }
 });
 
+socket.on('tank-moved', (data) => {
+  const p = renderer.players.find(player => player.socketId === data.socketId);
+  if (p) {
+    p.position = data.position;
+    p.moves = data.movesLeft;
+    if (p.socketId === socket.id) {
+      movesVal.textContent = data.movesLeft;
+    }
+  }
+});
+
 socket.on('game-started', (data) => {
   switchScreen(screenGame);
   renderer.initTerrain(data.terrainSeed);
@@ -73,6 +87,10 @@ socket.on('turn-started', (data) => {
     controls.classList.remove('disabled');
     turnIndicator.textContent = "YOUR TURN!";
     turnIndicator.style.color = "#22c55e";
+    const myPlayer = renderer.players.find(p => p.socketId === socket.id);
+    if (myPlayer) {
+      movesVal.textContent = myPlayer.moves !== undefined ? myPlayer.moves : 4;
+    }
   } else {
     controls.classList.add('disabled');
     turnIndicator.textContent = "Waiting for opponent...";
@@ -82,7 +100,7 @@ socket.on('turn-started', (data) => {
 
 socket.on('turn-result', (data) => {
   controls.classList.add('disabled');
-  renderer.animateProjectile(data.path, data.hit, () => {
+  renderer.animateProjectile(data.path, data.hit, data.terrainChanges, () => {
     renderer.setPlayers(data.players);
     updateHUD(data.players);
   });
@@ -158,6 +176,22 @@ btnAngleMinus.onclick = () => updateAim(Math.max(0, parseInt(inputAngle.value) -
 btnAnglePlus.onclick = () => updateAim(Math.min(180, parseInt(inputAngle.value) + 1), undefined);
 btnPowerMinus.onclick = () => updateAim(undefined, Math.max(10, parseInt(inputPower.value) - 1));
 btnPowerPlus.onclick = () => updateAim(undefined, Math.min(150, parseInt(inputPower.value) + 1));
+
+btnMoveLeft.onclick = () => {
+  if (!myTurn) return;
+  const myPlayer = renderer.players.find(p => p.socketId === socket.id);
+  if (myPlayer && myPlayer.moves > 0) {
+    socket.emit('move', { direction: -1 });
+  }
+};
+
+btnMoveRight.onclick = () => {
+  if (!myTurn) return;
+  const myPlayer = renderer.players.find(p => p.socketId === socket.id);
+  if (myPlayer && myPlayer.moves > 0) {
+    socket.emit('move', { direction: 1 });
+  }
+};
 
 btnFire.onclick = () => {
   if (!myTurn) return;

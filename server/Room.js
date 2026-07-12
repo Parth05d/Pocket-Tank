@@ -48,7 +48,8 @@ export class Room {
       alive: true,
       position: { x: 0, y: 0 },
       angle: 45, // default angle
-      power: 50
+      power: 50,
+      moves: 4
     };
 
     this.players.set(socket.id, player);
@@ -76,6 +77,7 @@ export class Room {
       position: { x: 0, y: 0 },
       angle: 45,
       power: 50,
+      moves: 4,
       isBot: true,
       difficulty
     };
@@ -106,6 +108,10 @@ export class Room {
     
     socket.on('aim', (data) => {
       this.handleAim(socket.id, data);
+    });
+
+    socket.on('move', (data) => {
+      this.handleMove(socket.id, data);
     });
   }
   
@@ -138,6 +144,7 @@ export class Room {
       // spread players out across the width
       const x = Math.floor(1920 * ((i + 1) / (this.players.size + 1)));
       player.position = { x: x, y: this.terrain.heightmap[x] };
+      player.moves = 4;
       i++;
     }
     
@@ -269,6 +276,33 @@ export class Room {
     }
   }
 
+  handleMove(socketId, data) {
+    if (this.status !== "in-progress") return;
+    
+    const currentPlayerId = this.turnOrder[this.currentTurnIndex];
+    if (socketId !== currentPlayerId) return;
+
+    const player = this.players.get(socketId);
+    if (!player || player.moves <= 0) return;
+
+    const direction = data.direction === -1 ? -1 : 1;
+    const moveDistance = 50;
+
+    let newX = player.position.x + direction * moveDistance;
+    if (newX < 0) newX = 0;
+    if (newX > 1919) newX = 1919;
+
+    player.position.x = newX;
+    player.position.y = this.terrain.heightmap[Math.floor(newX)];
+    player.moves -= 1;
+
+    this.io.to(this.id).emit("tank-moved", {
+      socketId,
+      position: player.position,
+      movesLeft: player.moves
+    });
+  }
+
   handleFire(socketId, data) {
     if (this.status !== "in-progress") return;
     
@@ -312,11 +346,12 @@ export class Room {
     }
     
     let radius = 0;
+    let terrainChanges = [];
     
     // 2. If it hit the ground, apply damage
     if (hitX >= 0 && hitX < 1920 && hitY < 1080) {
        radius = 40; // bomb blast radius
-       applyTerrainDelta(this.terrain.heightmap, hitX, hitY, radius);
+       terrainChanges = applyTerrainDelta(this.terrain.heightmap, hitX, hitY, radius);
        
        // 3. Apply damage to tanks
        for (const [id, p] of this.players.entries()) {
@@ -344,6 +379,7 @@ export class Room {
     this.io.to(this.id).emit("turn-result", {
       path: finalPath,
       hit: { x: hitX, y: hitY, radius },
+      terrainChanges: terrainChanges,
       players: Array.from(this.players.values())
     });
     

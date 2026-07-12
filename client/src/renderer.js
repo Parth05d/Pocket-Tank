@@ -1,4 +1,4 @@
-import { generateTerrain, applyTerrainDelta } from '../../server/shared/physics.js';
+import { generateTerrain } from '../../server/shared/physics.js';
 
 export class GameRenderer {
   constructor(canvasId) {
@@ -19,9 +19,11 @@ export class GameRenderer {
     this.terrainMap = generateTerrain(seed, this.width, this.height);
   }
   
-  applyDamage(x, y, radius) {
-    if (this.terrainMap) {
-      applyTerrainDelta(this.terrainMap, x, y, radius);
+  applyDamage(terrainChanges) {
+    if (this.terrainMap && terrainChanges) {
+      for (const change of terrainChanges) {
+        this.terrainMap[change.x] = change.y;
+      }
     }
   }
 
@@ -38,7 +40,7 @@ export class GameRenderer {
     this.players = players;
   }
 
-  animateProjectile(path, hit, onComplete) {
+  animateProjectile(path, hit, terrainChanges, onComplete) {
     this.projectilePath = path;
     this.projectileIndex = 0;
     this.smokeParticles = [];
@@ -64,7 +66,7 @@ export class GameRenderer {
         
         if (hit.radius > 0) {
           this.explosion = { x: hit.x, y: hit.y, radius: 0, maxRadius: hit.radius, alpha: 1 };
-          this.animateExplosion(onComplete);
+          this.animateExplosion(terrainChanges, onComplete);
         } else {
           onComplete();
         }
@@ -75,7 +77,7 @@ export class GameRenderer {
     animate();
   }
   
-  animateExplosion(onComplete) {
+  animateExplosion(terrainChanges, onComplete) {
     const animate = () => {
       if (!this.explosion) return;
       this.explosion.radius += 2;
@@ -89,7 +91,7 @@ export class GameRenderer {
       this.smokeParticles = this.smokeParticles.filter(s => s.life > 0);
 
       if (this.explosion.alpha <= 0) {
-        this.applyDamage(this.explosion.x, this.explosion.y, this.explosion.maxRadius);
+        this.applyDamage(terrainChanges);
         this.explosion = null;
         this.smokeParticles = [];
         onComplete();
@@ -144,13 +146,26 @@ export class GameRenderer {
       const tx = p.position.x;
       const ty = p.position.y - 4; // lift slightly above ground
       
+      let slopeAngle = 0;
+      if (this.terrainMap) {
+        const x1 = Math.max(0, Math.floor(tx - 15));
+        const x2 = Math.min(this.width - 1, Math.floor(tx + 15));
+        const y1 = this.terrainMap[x1];
+        const y2 = this.terrainMap[x2];
+        slopeAngle = Math.atan2(y2 - y1, x2 - x1);
+      }
+
+      this.ctx.save();
+      this.ctx.translate(tx, ty);
+      this.ctx.rotate(slopeAngle);
+      
       // Draw Treads
       this.ctx.fillStyle = '#334155';
       this.ctx.beginPath();
       if (this.ctx.roundRect) {
-         this.ctx.roundRect(tx - 18, ty - 4, 36, 8, 4);
+         this.ctx.roundRect(-18, -4, 36, 8, 4);
       } else {
-         this.ctx.rect(tx - 18, ty - 4, 36, 8);
+         this.ctx.rect(-18, -4, 36, 8);
       }
       this.ctx.fill();
       
@@ -158,39 +173,42 @@ export class GameRenderer {
       this.ctx.fillStyle = '#0f172a';
       for(let wx = -12; wx <= 12; wx += 8) {
          this.ctx.beginPath();
-         this.ctx.arc(tx + wx, ty, 3, 0, Math.PI*2);
+         this.ctx.arc(wx, 0, 3, 0, Math.PI*2);
          this.ctx.fill();
       }
 
       // Hull
       this.ctx.fillStyle = teamColor;
       this.ctx.beginPath();
-      this.ctx.moveTo(tx - 15, ty - 4);
-      this.ctx.lineTo(tx + 15, ty - 4);
-      this.ctx.lineTo(tx + 10, ty - 12);
-      this.ctx.lineTo(tx - 10, ty - 12);
+      this.ctx.moveTo(-15, -4);
+      this.ctx.lineTo(15, -4);
+      this.ctx.lineTo(10, -12);
+      this.ctx.lineTo(-10, -12);
       this.ctx.closePath();
       this.ctx.fill();
       
       // Turret
       this.ctx.fillStyle = darkColor;
       this.ctx.beginPath();
-      this.ctx.arc(tx, ty - 12, 6, Math.PI, 0);
+      this.ctx.arc(0, -12, 6, Math.PI, 0);
       this.ctx.fill();
       
       // Gun barrel
-      const angleRad = -(p.angle || 45) * (Math.PI / 180);
+      const angleAbs = -(p.angle || 45) * (Math.PI / 180);
+      const angleRel = angleAbs - slopeAngle;
       const barrelLen = 18;
-      const barrelEndX = tx + Math.cos(angleRad) * barrelLen;
-      const barrelEndY = (ty - 12) + Math.sin(angleRad) * barrelLen;
+      const barrelEndX = Math.cos(angleRel) * barrelLen;
+      const barrelEndY = -12 + Math.sin(angleRel) * barrelLen;
       
       this.ctx.strokeStyle = '#cbd5e1';
       this.ctx.lineWidth = 3;
       this.ctx.lineCap = 'round';
       this.ctx.beginPath();
-      this.ctx.moveTo(tx, ty - 12);
+      this.ctx.moveTo(0, -12);
       this.ctx.lineTo(barrelEndX, barrelEndY);
       this.ctx.stroke();
+
+      this.ctx.restore();
       
       // Name & HP Tag Background
       this.ctx.fillStyle = 'rgba(0,0,0,0.6)';
