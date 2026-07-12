@@ -126,6 +126,19 @@ input[type="text"]:focus { border-color: var(--accent); }
   width: 100%;
 }
 
+.turn-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.turn-timer {
+  font-size: 1.4rem;
+  font-weight: bold;
+  color: var(--text-secondary);
+}
+
 .game-view-container {
   flex-grow: 1;
   display: flex;

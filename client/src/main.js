@@ -105,10 +105,16 @@ socket.on("turn-started", (data) => {
 
 socket.on("turn-result", (data) => {
   controls.classList.add("disabled");
-  renderer.animateProjectile(data.path, data.hit, data.terrainChanges, () => {
-    renderer.setPlayers(data.players);
-    updateHUD(data.players);
-  });
+  renderer.animateProjectile(
+    data.path,
+    data.hit,
+    data.terrainChanges,
+    data.damageEvents,
+    data.players,
+    () => {
+      updateHUD(data.players);
+    },
+  );
 });
 
 socket.on("game-over", (data) => {
@@ -235,7 +241,7 @@ function switchScreen(screen) {
   screen.classList.add("active");
 }
 
-function updatePlayersList(players, teams) {
+function updatePlayersList(players) {
   listPlayers.innerHTML = "";
   players.forEach((p) => {
     const div = document.createElement("div");

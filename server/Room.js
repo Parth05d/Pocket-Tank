@@ -1,4 +1,8 @@
-import { generateTerrain, applyTerrainDelta, calculateTrajectory } from './shared/physics.js';
+import {
+  generateTerrain,
+  applyTerrainDelta,
+  calculateTrajectory,
+} from "./shared/physics.js";
 
 export class Room {
   constructor(id, io) {
@@ -7,18 +11,19 @@ export class Room {
     this.status = "lobby"; // lobby, in-progress, finished
     this.createdAt = Date.now();
     this.lastActivityAt = Date.now();
-    
+
     this.players = new Map(); // socketId -> Player
     this.turnOrder = [];
     this.currentTurnIndex = 0;
-    
+
     this.terrain = null;
+    this.terrainEffects = [];
     this.teams = { A: [], B: [] };
-    
+
     this.turnTimer = null;
-    this.TURN_DURATION_MS = 15000;
+    this.TURN_DURATION_MS = 60000;
   }
-  
+
   hasPlayer(socketId) {
     return this.players.has(socketId);
   }
@@ -36,9 +41,9 @@ export class Room {
     }
 
     socket.join(this.id);
-    
+
     const team = this.teams.A.length <= this.teams.B.length ? "A" : "B";
-    
+
     const player = {
       socketId: socket.id,
       nickname,
@@ -49,7 +54,7 @@ export class Room {
       position: { x: 0, y: 0 },
       angle: 45, // default angle
       power: 50,
-      moves: 4
+      moves: 4,
     };
 
     this.players.set(socket.id, player);
@@ -60,13 +65,13 @@ export class Room {
     this.registerRoomListeners(socket);
   }
 
-  joinBot(difficulty = 'normal') {
+  joinBot(difficulty = "normal") {
     if (this.status !== "lobby") throw new Error("Game already in progress");
     if (this.players.size >= 8) throw new Error("Room is full");
-    
+
     const team = this.teams.A.length <= this.teams.B.length ? "A" : "B";
     const botId = `bot_${Math.random().toString(36).substr(2, 6)}`;
-    
+
     const player = {
       socketId: botId,
       nickname: "CPU",
@@ -79,13 +84,13 @@ export class Room {
       power: 50,
       moves: 4,
       isBot: true,
-      difficulty
+      difficulty,
     };
-    
+
     this.players.set(botId, player);
     this.teams[team].push(botId);
     this.lastActivityAt = Date.now();
-    
+
     this.broadcastState();
   }
 
@@ -93,66 +98,71 @@ export class Room {
     this.io.to(this.id).emit("room-state-update", {
       status: this.status,
       players: Array.from(this.players.values()),
-      teams: this.teams
+      teams: this.teams,
     });
   }
-  
+
   registerRoomListeners(socket) {
-    socket.on('start-game', () => {
+    socket.on("start-game", () => {
       this.startGame();
     });
-    
-    socket.on('fire', (data) => {
+
+    socket.on("fire", (data) => {
       this.handleFire(socket.id, data);
     });
-    
-    socket.on('aim', (data) => {
+
+    socket.on("aim", (data) => {
       this.handleAim(socket.id, data);
     });
 
-    socket.on('move', (data) => {
+    socket.on("move", (data) => {
       this.handleMove(socket.id, data);
     });
   }
-  
+
   startGame() {
     if (this.status !== "lobby") return;
     if (this.players.size < 1) return; // For testing we allow 1 player, otherwise usually 2
-    
+
     this.status = "in-progress";
     this.lastActivityAt = Date.now();
-    
+
     // Generate terrain
     const seed = Math.floor(Math.random() * 10000);
     this.terrain = {
       seed: seed,
-      heightmap: generateTerrain(seed, 1920, 1080) // standard 1920x1080 logical size
+      heightmap: generateTerrain(seed, 1920, 1080), // standard 1920x1080 logical size
     };
-    
+    this.terrainEffects = [];
+
     // Set up turn order (alternating teams A, B, A, B...)
     this.turnOrder = [];
-    const maxPlayersPerTeam = Math.max(this.teams.A.length, this.teams.B.length);
-    for(let i=0; i<maxPlayersPerTeam; i++) {
+    const maxPlayersPerTeam = Math.max(
+      this.teams.A.length,
+      this.teams.B.length,
+    );
+    for (let i = 0; i < maxPlayersPerTeam; i++) {
       if (this.teams.A[i]) this.turnOrder.push(this.teams.A[i]);
       if (this.teams.B[i]) this.turnOrder.push(this.teams.B[i]);
     }
     this.currentTurnIndex = 0;
-    
+
     // Assign starting positions
     let i = 0;
-    for (const [socketId, player] of this.players.entries()) {
+    for (const player of this.players.values()) {
       // spread players out across the width
       const x = Math.floor(1920 * ((i + 1) / (this.players.size + 1)));
       player.position = { x: x, y: this.terrain.heightmap[x] };
       player.moves = 4;
       i++;
     }
-    
+
     this.io.to(this.id).emit("game-started", {
       status: this.status,
       terrainSeed: this.terrain.seed,
+      terrainEffects: this.terrainEffects,
       players: Array.from(this.players.values()),
-      currentTurnSocketId: this.turnOrder[this.currentTurnIndex]
+      currentTurnSocketId: this.turnOrder[this.currentTurnIndex],
     });
 
     this.startTurnTimer();
@@ -160,18 +170,13 @@ export class Room {
 
   startTurnTimer() {
     if (this.turnTimer) clearTimeout(this.turnTimer);
-    
+
     const currentTurnSocketId = this.turnOrder[this.currentTurnIndex];
     const player = this.players.get(currentTurnSocketId);
 
-    this.turnTimer = setTimeout(() => {
-      // Turn timeout, advance turn
-      this.advanceTurn();
-    }, this.TURN_DURATION_MS);
-    
     this.io.to(this.id).emit("turn-started", {
       currentTurnSocketId,
-      timeoutMs: this.TURN_DURATION_MS
+      timeoutMs: this.TURN_DURATION_MS,
     });
 
     if (player && player.isBot) {
@@ -189,12 +194,14 @@ export class Room {
       let bestAngle = 45;
       let bestPower = 50;
       let bestDist = Infinity;
-      
+
       // Find enemies
-      const enemies = Array.from(this.players.values()).filter(p => p.alive && p.team !== botPlayer.team);
+      const enemies = Array.from(this.players.values()).filter(
+        (p) => p.alive && p.team !== botPlayer.team,
+      );
       if (enemies.length === 0) return;
       const target = enemies[Math.floor(Math.random() * enemies.length)]; // pick random enemy
-      
+
       // We know botPlayer.position.x and target.position.x
       // If target is to the right, aim 0-90. If left, aim 90-180
       const targetIsRight = target.position.x > botPlayer.position.x;
@@ -205,21 +212,37 @@ export class Room {
       for (let i = 0; i < 50; i++) {
         const testAngle = minAngle + Math.random() * (maxAngle - minAngle);
         const testPower = 30 + Math.random() * 100;
-        
-        const path = calculateTrajectory(botPlayer.position.x, botPlayer.position.y - 10, testAngle, testPower, 0, 9.8);
-        
-        let hitX = -1; let hitY = -1;
+
+        const path = calculateTrajectory(
+          botPlayer.position.x,
+          botPlayer.position.y - 10,
+          testAngle,
+          testPower,
+          0,
+          9.8,
+        );
+
+        let hitX = -1;
+        let hitY = -1;
         for (let point of path) {
-          if (point.x < 0 || point.x >= 1920 || point.y >= 1080) { hitX = point.x; hitY = point.y; break; }
+          if (point.x < 0 || point.x >= 1920 || point.y >= 1080) {
+            hitX = point.x;
+            hitY = point.y;
+            break;
+          }
           const px = Math.floor(point.x);
-          if (px >= 0 && px < 1920 && point.y >= this.terrain.heightmap[px]) { hitX = point.x; hitY = point.y; break; }
+          if (px >= 0 && px < 1920 && point.y >= this.terrain.heightmap[px]) {
+            hitX = point.x;
+            hitY = point.y;
+            break;
+          }
         }
-        
+
         if (hitX !== -1) {
           const dx = hitX - target.position.x;
           const dy = hitY - target.position.y;
-          const dist = Math.sqrt(dx*dx + dy*dy);
-          
+          const dist = Math.sqrt(dx * dx + dy * dy);
+
           if (dist < bestDist) {
             bestDist = dist;
             bestAngle = testAngle;
@@ -227,30 +250,36 @@ export class Room {
           }
         }
       }
-      
+
       // Add random error based on difficulty (e.g. +/- some angle/power)
       // Normal difficulty: might miss a bit
-      const errorMargin = 5; 
-      const finalAngle = bestAngle + (Math.random() * errorMargin * 2 - errorMargin);
-      const finalPower = bestPower + (Math.random() * errorMargin * 2 - errorMargin);
-      
-      this.handleFire(botPlayer.socketId, { angle: finalAngle, power: finalPower });
+      const errorMargin = 5;
+      const finalAngle =
+        bestAngle + (Math.random() * errorMargin * 2 - errorMargin);
+      const finalPower =
+        bestPower + (Math.random() * errorMargin * 2 - errorMargin);
+
+      this.handleFire(botPlayer.socketId, {
+        angle: finalAngle,
+        power: finalPower,
+      });
     }, 2000);
   }
 
   advanceTurn() {
     if (this.turnOrder.length === 0) return;
-    
+
     let attempts = 0;
     this.currentTurnIndex = (this.currentTurnIndex + 1) % this.turnOrder.length;
-    
+
     // skip dead or disconnected players
-    while(attempts < this.turnOrder.length) {
+    while (attempts < this.turnOrder.length) {
       const p = this.players.get(this.turnOrder[this.currentTurnIndex]);
       if (p && p.alive) {
         break; // found a valid, alive player
       }
-      this.currentTurnIndex = (this.currentTurnIndex + 1) % this.turnOrder.length;
+      this.currentTurnIndex =
+        (this.currentTurnIndex + 1) % this.turnOrder.length;
       attempts++;
     }
 
@@ -266,19 +295,19 @@ export class Room {
     if (player) {
       if (data.angle !== undefined) player.angle = data.angle;
       if (data.power !== undefined) player.power = data.power;
-      
+
       // broadcast to everyone else in the room
       this.io.to(this.id).emit("aim-changed", {
         socketId,
         angle: player.angle,
-        power: player.power
+        power: player.power,
       });
     }
   }
 
   handleMove(socketId, data) {
     if (this.status !== "in-progress") return;
-    
+
     const currentPlayerId = this.turnOrder[this.currentTurnIndex];
     if (socketId !== currentPlayerId) return;
 
@@ -299,30 +328,37 @@ export class Room {
     this.io.to(this.id).emit("tank-moved", {
       socketId,
       position: player.position,
-      movesLeft: player.moves
+      movesLeft: player.moves,
     });
   }
 
   handleFire(socketId, data) {
     if (this.status !== "in-progress") return;
-    
+
     const currentPlayerId = this.turnOrder[this.currentTurnIndex];
     if (socketId !== currentPlayerId) {
       console.log(`Player ${socketId} tried to fire out of turn!`);
       return;
     }
-    
+
     this.lastActivityAt = Date.now();
     if (this.turnTimer) clearTimeout(this.turnTimer);
 
     const player = this.players.get(socketId);
-    
+
     // Data contains: { angle, power }
     const { angle, power } = data;
-    
+
     // 1. Calculate trajectory until hit
-    const path = calculateTrajectory(player.position.x, player.position.y - 10, angle, power, 0, 9.8); // slight offset so it doesnt hit self immediately
-    
+    const path = calculateTrajectory(
+      player.position.x,
+      player.position.y - 10,
+      angle,
+      power,
+      0,
+      9.8,
+    ); // slight offset so it doesnt hit self immediately
+
     let hitX = -1;
     let hitY = -1;
     let finalPath = [];
@@ -335,7 +371,7 @@ export class Room {
         hitY = point.y;
         break; // out of bounds
       }
-      
+
       // check terrain collision
       const px = Math.floor(point.x);
       if (px >= 0 && px < 1920 && point.y >= this.terrain.heightmap[px]) {
@@ -344,45 +380,71 @@ export class Room {
         break;
       }
     }
-    
+
     let radius = 0;
     let terrainChanges = [];
-    
+    let damageEvents = [];
+
     // 2. If it hit the ground, apply damage
     if (hitX >= 0 && hitX < 1920 && hitY < 1080) {
-       radius = 40; // bomb blast radius
-       terrainChanges = applyTerrainDelta(this.terrain.heightmap, hitX, hitY, radius);
-       
-       // 3. Apply damage to tanks
-       for (const [id, p] of this.players.entries()) {
-         if (!p.alive) continue;
-         const dx = p.position.x - hitX;
-         const dy = p.position.y - hitY;
-         const dist = Math.sqrt(dx*dx + dy*dy);
-         if (dist < radius + 15) { // tank hit radius approx 15
-           p.hp -= Math.floor((1 - dist/(radius+15)) * 50); // max 50 damage
-           if (p.hp <= 0) {
-             p.hp = 0;
-             p.alive = false;
-           }
-         }
-         
-         // Update tank Y position so it "falls" if terrain under it is destroyed
-         const pX = Math.floor(p.position.x);
-         if (pX >= 0 && pX < 1920) {
-           p.position.y = this.terrain.heightmap[pX];
-         }
-       }
+      radius = 40; // bomb blast radius
+      terrainChanges = applyTerrainDelta(
+        this.terrain.heightmap,
+        hitX,
+        hitY,
+        radius,
+      );
+
+      // 3. Apply damage to tanks
+      for (const p of this.players.values()) {
+        if (!p.alive) continue;
+        const dx = p.position.x - hitX;
+        const dy = p.position.y - hitY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < radius + 15) {
+          // tank hit radius approx 15
+          const damage = Math.floor((1 - dist / (radius + 15)) * 50);
+          p.hp -= damage; // max 50 damage
+
+          damageEvents.push({
+            tankId: p.tankId,
+            damage: damage,
+            x: p.position.x,
+            y: p.position.y - 40, // float above tank
+          });
+
+          if (p.hp <= 0) {
+            p.hp = 0;
+            p.alive = false;
+          }
+        }
+
+        // Update tank Y position so it "falls" if terrain under it is destroyed
+        const pX = Math.floor(p.position.x);
+        if (pX >= 0 && pX < 1920) {
+          p.position.y = this.terrain.heightmap[pX];
+        }
+      }
+
+      // Add a sample burn effect for testing the new rendering system
+      this.terrainEffects.push({ type: "burn", x: hitX, radius: radius * 1.5 });
     }
 
     // 4. Broadcast result
     this.io.to(this.id).emit("turn-result", {
       path: finalPath,
-      hit: { x: hitX, y: hitY, radius },
+      hit: {
+        x: hitX,
+        y: hitY,
+        radius,
+        hasEffects: true,
+        newEffects: this.terrainEffects,
+      },
       terrainChanges: terrainChanges,
-      players: Array.from(this.players.values())
+      damageEvents: damageEvents,
+      players: Array.from(this.players.values()),
     });
-    
+
     // 5. Check win condition after animation delay
     setTimeout(() => {
       this.checkWinCondition();
@@ -390,9 +452,13 @@ export class Room {
   }
 
   checkWinCondition() {
-    let teamAAlive = this.teams.A.some(id => this.players.get(id) && this.players.get(id).alive);
-    let teamBAlive = this.teams.B.some(id => this.players.get(id) && this.players.get(id).alive);
-    
+    let teamAAlive = this.teams.A.some(
+      (id) => this.players.get(id) && this.players.get(id).alive,
+    );
+    let teamBAlive = this.teams.B.some(
+      (id) => this.players.get(id) && this.players.get(id).alive,
+    );
+
     if (!teamAAlive && teamBAlive) {
       this.endGame("Team B Wins!");
     } else if (teamAAlive && !teamBAlive) {
@@ -404,7 +470,7 @@ export class Room {
       this.advanceTurn();
     }
   }
-  
+
   endGame(message) {
     this.status = "finished";
     if (this.turnTimer) clearTimeout(this.turnTimer);
@@ -413,9 +479,9 @@ export class Room {
 
   handlePlayerDisconnect(socketId) {
     this.players.delete(socketId);
-    this.teams.A = this.teams.A.filter(id => id !== socketId);
-    this.teams.B = this.teams.B.filter(id => id !== socketId);
-    
+    this.teams.A = this.teams.A.filter((id) => id !== socketId);
+    this.teams.B = this.teams.B.filter((id) => id !== socketId);
+
     this.io.to(this.id).emit("player-disconnected", { socketId });
     this.broadcastState();
   }
