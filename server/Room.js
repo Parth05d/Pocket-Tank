@@ -22,6 +22,8 @@ export class Room {
 
     this.turnTimer = null;
     this.TURN_DURATION_MS = 60000;
+    this.currentVolley = 1;
+    this.MAX_VOLLEYS = 10;
   }
 
   hasPlayer(socketId) {
@@ -49,7 +51,7 @@ export class Room {
       nickname,
       team,
       tankId: `tank-${socket.id}`,
-      hp: 100,
+      score: 0,
       alive: true,
       position: { x: 0, y: 0 },
       angle: 45, // default angle
@@ -77,7 +79,7 @@ export class Room {
       nickname: "CPU",
       team,
       tankId: `tank-${botId}`,
-      hp: 100,
+      score: 0,
       alive: true,
       position: { x: 0, y: 0 },
       angle: 45,
@@ -146,6 +148,7 @@ export class Room {
       if (this.teams.B[i]) this.turnOrder.push(this.teams.B[i]);
     }
     this.currentTurnIndex = 0;
+    this.currentVolley = 1;
 
     // Assign starting positions
     let i = 0;
@@ -163,6 +166,8 @@ export class Room {
       terrainEffects: this.terrainEffects,
       players: Array.from(this.players.values()),
       currentTurnSocketId: this.turnOrder[this.currentTurnIndex],
+      currentVolley: this.currentVolley,
+      maxVolleys: this.MAX_VOLLEYS,
     });
 
     this.startTurnTimer();
@@ -177,6 +182,8 @@ export class Room {
     this.io.to(this.id).emit("turn-started", {
       currentTurnSocketId,
       timeoutMs: this.TURN_DURATION_MS,
+      currentVolley: this.currentVolley,
+      maxVolleys: this.MAX_VOLLEYS,
     });
 
     if (player && player.isBot) {
@@ -270,23 +277,45 @@ export class Room {
     if (this.turnOrder.length === 0) return;
 
     let attempts = 0;
-    this.currentTurnIndex = (this.currentTurnIndex + 1) % this.turnOrder.length;
+    let nextIndex = this.currentTurnIndex;
 
-    // skip dead or disconnected players
     while (attempts < this.turnOrder.length) {
-      const p = this.players.get(this.turnOrder[this.currentTurnIndex]);
-      if (p && p.alive) {
-        break; // found a valid, alive player
+      nextIndex++;
+      if (nextIndex >= this.turnOrder.length) {
+        nextIndex = 0;
+        this.currentVolley++;
       }
-      this.currentTurnIndex =
-        (this.currentTurnIndex + 1) % this.turnOrder.length;
+
+      if (this.currentVolley > this.MAX_VOLLEYS) {
+        let teamAScore = 0;
+        let teamBScore = 0;
+        for (const id of this.teams.A) {
+          const p = this.players.get(id);
+          if (p) teamAScore += p.score;
+        }
+        for (const id of this.teams.B) {
+          const p = this.players.get(id);
+          if (p) teamBScore += p.score;
+        }
+
+        if (teamAScore > teamBScore)
+          this.endGame(`Team A Wins with ${teamAScore} points!`);
+        else if (teamBScore > teamAScore)
+          this.endGame(`Team B Wins with ${teamBScore} points!`);
+        else this.endGame(`Draw! Both teams scored ${teamAScore} points.`);
+        return;
+      }
+
+      const p = this.players.get(this.turnOrder[nextIndex]);
+      if (p && p.alive) {
+        this.currentTurnIndex = nextIndex;
+        this.startTurnTimer();
+        return;
+      }
       attempts++;
     }
 
-    // Only start timer if we actually found someone to take a turn
-    if (attempts < this.turnOrder.length) {
-      this.startTurnTimer();
-    }
+    this.endGame("Game Over - All players disconnected");
   }
 
   handleAim(socketId, data) {
@@ -404,7 +433,12 @@ export class Room {
         if (dist < radius + 15) {
           // tank hit radius approx 15
           const damage = Math.floor((1 - dist / (radius + 15)) * 50);
-          p.hp -= damage; // max 50 damage
+
+          if (p.team !== player.team) {
+            player.score += damage;
+          } else {
+            player.score -= damage;
+          }
 
           damageEvents.push({
             tankId: p.tankId,
@@ -412,11 +446,6 @@ export class Room {
             x: p.position.x,
             y: p.position.y - 40, // float above tank
           });
-
-          if (p.hp <= 0) {
-            p.hp = 0;
-            p.alive = false;
-          }
         }
 
         // Update tank Y position so it "falls" if terrain under it is destroyed
@@ -452,23 +481,7 @@ export class Room {
   }
 
   checkWinCondition() {
-    let teamAAlive = this.teams.A.some(
-      (id) => this.players.get(id) && this.players.get(id).alive,
-    );
-    let teamBAlive = this.teams.B.some(
-      (id) => this.players.get(id) && this.players.get(id).alive,
-    );
-
-    if (!teamAAlive && teamBAlive) {
-      this.endGame("Team B Wins!");
-    } else if (teamAAlive && !teamBAlive) {
-      this.endGame("Team A Wins!");
-    } else if (!teamAAlive && !teamBAlive) {
-      this.endGame("Draw!");
-    } else {
-      // Continue
-      this.advanceTurn();
-    }
+    this.advanceTurn();
   }
 
   endGame(message) {

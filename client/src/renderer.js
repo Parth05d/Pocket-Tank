@@ -323,7 +323,7 @@ export class GameRenderer {
       this.ctx.font = "bold 10px Arial";
       this.ctx.textAlign = "center";
       this.ctx.textBaseline = "middle";
-      this.ctx.fillText(`${p.nickname} (${Math.floor(p.hp)})`, tx, ty - 30);
+      this.ctx.fillText(`${p.nickname} (${p.score})`, tx, ty - 30);
     }
 
     // 4. Smoke Trail

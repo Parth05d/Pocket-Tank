@@ -90,7 +90,7 @@ socket.on("turn-started", (data) => {
   myTurn = data.currentTurnSocketId === socket.id;
   if (myTurn) {
     controls.classList.remove("disabled");
-    turnIndicator.textContent = "YOUR TURN!";
+    turnIndicator.textContent = `YOUR TURN! (Volley ${data.currentVolley}/${data.maxVolleys})`;
     turnIndicator.style.color = "#22c55e";
     const myPlayer = renderer.players.find((p) => p.socketId === socket.id);
     if (myPlayer) {
@@ -98,7 +98,7 @@ socket.on("turn-started", (data) => {
     }
   } else {
     controls.classList.add("disabled");
-    turnIndicator.textContent = "Waiting for opponent...";
+    turnIndicator.textContent = `Waiting for opponent... (Volley ${data.currentVolley}/${data.maxVolleys})`;
     turnIndicator.style.color = "white";
   }
 });
@@ -251,12 +251,12 @@ function updatePlayersList(players) {
 }
 
 function updateHUD(players) {
-  let hpA = 0;
-  let hpB = 0;
+  let scoreA = 0;
+  let scoreB = 0;
   players.forEach((p) => {
-    if (p.team === "A") hpA += p.hp;
-    if (p.team === "B") hpB += p.hp;
+    if (p.team === "A") scoreA += p.score;
+    if (p.team === "B") scoreB += p.score;
   });
-  teamAStatus.textContent = `Team A: ${hpA} HP`;
-  teamBStatus.textContent = `Team B: ${hpB} HP`;
+  teamAStatus.textContent = `Team A: ${scoreA} PTS`;
+  teamBStatus.textContent = `Team B: ${scoreB} PTS`;
 }
