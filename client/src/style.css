@@ -220,6 +220,7 @@ canvas {
 input[type="range"] {
   flex-grow: 1;
   -webkit-appearance: none;
+  appearance: none;
   background: transparent;
 }
 input[type="range"]::-webkit-slider-runnable-track {

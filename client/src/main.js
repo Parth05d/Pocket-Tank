@@ -24,6 +24,7 @@ const inputPower = document.getElementById("input-power");
 const angleVal = document.getElementById("angle-val");
 const powerVal = document.getElementById("power-val");
 const btnFire = document.getElementById("btn-fire");
+const inputWeapon = document.getElementById("input-weapon");
 const btnAngleMinus = document.getElementById("btn-angle-minus");
 const btnAnglePlus = document.getElementById("btn-angle-plus");
 const btnPowerMinus = document.getElementById("btn-power-minus");
@@ -227,6 +228,7 @@ btnFire.onclick = () => {
   socket.emit("fire", {
     angle: parseInt(inputAngle.value),
     power: parseInt(inputPower.value),
+    weapon: inputWeapon.value,
   });
 };
 

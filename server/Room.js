@@ -375,8 +375,9 @@ export class Room {
 
     const player = this.players.get(socketId);
 
-    // Data contains: { angle, power }
-    const { angle, power } = data;
+    // Data contains: { angle, power, weapon }
+    const { angle, power, weapon } = data;
+    const isNapalm = weapon === "napalm";
 
     // 1. Calculate trajectory until hit
     const path = calculateTrajectory(
@@ -416,13 +417,22 @@ export class Room {
 
     // 2. If it hit the ground, apply damage
     if (hitX >= 0 && hitX < 1920 && hitY < 1080) {
-      radius = 40; // bomb blast radius
-      terrainChanges = applyTerrainDelta(
-        this.terrain.heightmap,
-        hitX,
-        hitY,
-        radius,
-      );
+      radius = isNapalm ? 60 : 40; // Napalm spreads wider
+
+      if (!isNapalm) {
+        terrainChanges = applyTerrainDelta(
+          this.terrain.heightmap,
+          hitX,
+          hitY,
+          radius,
+        );
+      } else {
+        this.terrainEffects.push({
+          type: "napalm",
+          x: hitX,
+          radius: radius * 1.2,
+        });
+      }
 
       // 3. Apply damage to tanks
       for (const p of this.players.values()) {
@@ -431,11 +441,19 @@ export class Room {
         const dy = p.position.y - hitY;
         const dist = Math.sqrt(dx * dx + dy * dy);
         if (dist < radius + 15) {
-          // tank hit radius approx 15
-          const damage = Math.floor((1 - dist / (radius + 15)) * 50);
+          let damage = 0;
+          let sequence = null;
+
+          if (isNapalm) {
+            sequence = [2, 4, 8, 12, 16];
+            damage = 42; // Sum of sequence
+          } else {
+            damage = Math.floor((1 - dist / (radius + 15)) * 50);
+          }
 
           if (p.team !== player.team) {
-            player.score += damage;
+            sequence: (sequence, // Add sequence for client animation
+              (player.score += damage));
           } else {
             player.score -= damage;
           }
@@ -455,10 +473,15 @@ export class Room {
         }
       }
 
-      // Add a sample burn effect for testing the new rendering system
-      this.terrainEffects.push({ type: "burn", x: hitX, radius: radius * 1.5 });
+      // Add a sample burn effect for bomb
+      if (!isNapalm) {
+        this.terrainEffects.push({
+          type: "burn",
+          x: hitX,
+          radius: radius * 1.5,
+        });
+      }
     }
-
     // 4. Broadcast result
     this.io.to(this.id).emit("turn-result", {
       path: finalPath,
@@ -466,6 +489,7 @@ export class Room {
         x: hitX,
         y: hitY,
         radius,
+        weapon,
         hasEffects: true,
         newEffects: this.terrainEffects,
       },
@@ -475,9 +499,11 @@ export class Room {
     });
 
     // 5. Check win condition after animation delay
+    // Napalm takes longer to animate its sequence
+    const delay = isNapalm ? 5000 : 3000;
     setTimeout(() => {
       this.checkWinCondition();
-    }, 3000); // give client 3s to animate before next turn starts
+    }, delay); // give client time to animate before next turn starts
   }
 
   checkWinCondition() {

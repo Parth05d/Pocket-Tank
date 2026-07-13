@@ -15,6 +15,8 @@ export class GameRenderer {
     this.explosion = null;
     this.smokeParticles = [];
     this.damageTexts = [];
+    this.pendingDamageSequences = [];
+    this.isDamageTextAnimating = false;
   }
 
   initTerrain(seed, effects = []) {
@@ -89,6 +91,7 @@ export class GameRenderer {
             radius: 0,
             maxRadius: hit.radius || 40,
             alpha: 1,
+            weapon: hit.weapon,
           };
 
           // Apply crater and tank movement IMMEDIATELY so it happens simultaneously with the blast
@@ -108,55 +111,101 @@ export class GameRenderer {
   }
 
   animateExplosion(damageEvents, onComplete) {
+    this.pendingDamageSequences = [];
     if (damageEvents && damageEvents.length > 0) {
-      this.damageTexts = damageEvents.map((evt) => ({
+      const instantEvents = damageEvents.filter((e) => !e.sequence);
+      this.pendingDamageSequences = damageEvents
+        .filter((e) => e.sequence)
+        .map((e) => ({
+          sequence: [...e.sequence],
+          x: e.x,
+          y: e.y,
+          timer: 0,
+        }));
+
+      this.damageTexts = instantEvents.map((evt) => ({
         text: `-${evt.damage}`,
         x: evt.x,
         y: evt.y,
         life: 1.0,
       }));
-      // Start damage text animation in parallel
-      this.animateDamageTexts(() => {});
+      if (this.damageTexts.length > 0) {
+        this.startDamageTextAnimation();
+      }
     }
 
+    const isNapalm = this.explosion && this.explosion.weapon === "napalm";
+
     const animate = () => {
-      if (!this.explosion) return;
-      // Explode slower (1px per frame instead of 2)
-      this.explosion.radius += 1;
-      this.explosion.alpha -= 0.02;
+      let keepAnimating = false;
 
-      // update smoke
-      for (let s of this.smokeParticles) {
-        s.life -= 0.05;
-        s.radius = (1 - s.life) * 15;
+      // Process pending sequences
+      if (
+        this.pendingDamageSequences &&
+        this.pendingDamageSequences.length > 0
+      ) {
+        keepAnimating = true;
+        this.pendingDamageSequences.forEach((seq) => {
+          seq.timer++;
+          if (seq.timer % 30 === 0 && seq.sequence.length > 0) {
+            const dmg = seq.sequence.shift();
+            this.damageTexts.push({
+              text: `-${dmg}`,
+              x: seq.x + (Math.random() * 20 - 10), // slight jitter
+              y: seq.y,
+              life: 1.0,
+            });
+            this.startDamageTextAnimation();
+          }
+        });
+        this.pendingDamageSequences = this.pendingDamageSequences.filter(
+          (s) => s.sequence.length > 0,
+        );
       }
-      this.smokeParticles = this.smokeParticles.filter((s) => s.life > 0);
 
-      if (this.explosion.alpha <= 0) {
-        this.explosion = null;
-        this.smokeParticles = [];
-        onComplete();
-      } else {
+      if (this.explosion) {
+        keepAnimating = true;
+        // Explode slower
+        this.explosion.radius += isNapalm ? 0.5 : 1;
+        this.explosion.alpha -= isNapalm ? 0.005 : 0.02; // Napalm lasts longer
+
+        // update smoke
+        for (let s of this.smokeParticles) {
+          s.life -= 0.05;
+          s.radius = (1 - s.life) * 15;
+        }
+        this.smokeParticles = this.smokeParticles.filter((s) => s.life > 0);
+
+        if (this.explosion.alpha <= 0) {
+          this.explosion = null;
+          this.smokeParticles = [];
+        }
+      }
+
+      if (keepAnimating) {
         requestAnimationFrame(animate);
+      } else {
+        onComplete();
       }
     };
     animate();
   }
 
-  animateDamageTexts(onComplete) {
+  startDamageTextAnimation() {
+    if (this.isDamageTextAnimating) return;
+    this.isDamageTextAnimating = true;
+
     const animate = () => {
-      let active = false;
       for (const t of this.damageTexts) {
         t.y -= 0.3; // float up slower
-        t.life -= 0.01; // fade out slower (takes about 1.6 seconds)
-        if (t.life > 0) active = true;
+        t.life -= 0.01; // fade out slower
       }
+      this.damageTexts = this.damageTexts.filter((t) => t.life > 0);
 
-      if (active) {
+      if (this.damageTexts.length > 0) {
         requestAnimationFrame(animate);
       } else {
-        this.damageTexts = [];
-        onComplete();
+        this.isDamageTextAnimating = false;
       }
     };
     animate();
@@ -209,6 +258,28 @@ export class GameRenderer {
             );
             burnGrad.addColorStop(0, "rgba(0, 0, 0, 0.85)");
             burnGrad.addColorStop(0.5, "rgba(0, 0, 0, 0.6)");
+            burnGrad.addColorStop(1, "rgba(0, 0, 0, 0)");
+
+            this.ctx.fillStyle = burnGrad;
+            this.ctx.fillRect(
+              effect.x - effect.radius,
+              surfaceY - effect.radius,
+              effect.radius * 2,
+              effect.radius * 2,
+            );
+          } else if (effect.type === "napalm") {
+            const surfaceY =
+              this.terrainMap[Math.floor(effect.x)] || this.height;
+            const burnGrad = this.ctx.createRadialGradient(
+              effect.x,
+              surfaceY,
+              0,
+              effect.x,
+              surfaceY,
+              effect.radius,
+            );
+            burnGrad.addColorStop(0, "rgba(0, 0, 0, 0.95)");
+            burnGrad.addColorStop(0.5, "rgba(20, 20, 20, 0.7)");
             burnGrad.addColorStop(1, "rgba(0, 0, 0, 0)");
 
             this.ctx.fillStyle = burnGrad;
@@ -382,19 +453,36 @@ export class GameRenderer {
         this.explosion.y,
         this.explosion.radius,
       );
-      grad.addColorStop(
-        0,
-        `rgba(255, 255, 255, ${Math.max(0, this.explosion.alpha)})`,
-      );
-      grad.addColorStop(
-        0.2,
-        `rgba(250, 204, 21, ${Math.max(0, this.explosion.alpha)})`,
-      );
-      grad.addColorStop(
-        0.6,
-        `rgba(239, 68, 68, ${Math.max(0, this.explosion.alpha)})`,
-      );
-      grad.addColorStop(1, `rgba(0, 0, 0, 0)`);
+
+      if (this.explosion.weapon === "napalm") {
+        grad.addColorStop(
+          0,
+          `rgba(20, 20, 20, ${Math.max(0, this.explosion.alpha)})`,
+        );
+        grad.addColorStop(
+          0.2,
+          `rgba(40, 40, 40, ${Math.max(0, this.explosion.alpha)})`,
+        );
+        grad.addColorStop(
+          0.6,
+          `rgba(10, 10, 10, ${Math.max(0, this.explosion.alpha)})`,
+        );
+        grad.addColorStop(1, `rgba(0, 0, 0, 0)`);
+      } else {
+        grad.addColorStop(
+          0,
+          `rgba(255, 255, 255, ${Math.max(0, this.explosion.alpha)})`,
+        );
+        grad.addColorStop(
+          0.2,
+          `rgba(250, 204, 21, ${Math.max(0, this.explosion.alpha)})`,
+        );
+        grad.addColorStop(
+          0.6,
+          `rgba(239, 68, 68, ${Math.max(0, this.explosion.alpha)})`,
+        );
+        grad.addColorStop(1, `rgba(0, 0, 0, 0)`);
+      }
 
       this.ctx.fillStyle = grad;
       this.ctx.beginPath();
