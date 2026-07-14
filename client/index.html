@@ -42,13 +42,22 @@
       
       <!-- Game Screen -->
       <div id="game" class="screen">
-        <div class="top-bar">
-          <div id="team-a-status" class="team-status">Team A: 0 PTS</div>
-          <div id="turn-indicator">Waiting...</div>
-          <div id="team-b-status" class="team-status">Team B: 0 PTS</div>
-        </div>
-        
         <div class="game-view-container">
+          <!-- Top HUD -->
+          <div id="classic-hud" class="classic-hud">
+            <div class="hud-left">
+              <div id="team-a-name" class="player-name team-a">PLAYER 1</div>
+              <div id="team-a-score" class="player-score">0</div>
+            </div>
+            <div class="hud-center">
+              <div id="turn-indicator" class="volley-text">Waiting...</div>
+            </div>
+            <div class="hud-right">
+              <div id="team-b-name" class="player-name team-b">PLAYER 2</div>
+              <div id="team-b-score" class="player-score">0</div>
+            </div>
+          </div>
+
           <canvas id="game-canvas" width="1920" height="1080"></canvas>
           
           <div id="game-over-modal" class="hidden">
@@ -58,38 +67,55 @@
         </div>
 
         <div id="controls-container">
-          <div id="controls" class="controls-panel disabled">
-            <div class="control-group">
-              <label>ANGLE: <span id="angle-val">45</span>°</label>
-              <div class="fine-tune">
-                <button class="tune-btn" id="btn-angle-minus">-</button>
-                <input type="range" id="input-angle" min="0" max="180" value="45" />
-                <button class="tune-btn" id="btn-angle-plus">+</button>
-              </div>
-            </div>
-            <div class="control-group">
-              <label>POWER: <span id="power-val">50</span></label>
-              <div class="fine-tune">
-                <button class="tune-btn" id="btn-power-minus">-</button>
-                <input type="range" id="input-power" min="10" max="150" value="50" />
-                <button class="tune-btn" id="btn-power-plus">+</button>
-              </div>
-            </div>
-            <div class="control-group">
-              <label>MOVES: <span id="moves-val">4</span></label>
-              <div class="fine-tune">
+          <div id="controls" class="controls-panel disabled classic-panel">
+            
+            <div class="control-box move-box">
+              <div class="label">Move</div>
+              <div class="move-controls">
                 <button class="tune-btn" id="btn-move-left">&lt;&lt;</button>
+                <div class="value-box" id="moves-val">4</div>
                 <button class="tune-btn" id="btn-move-right">&gt;&gt;</button>
               </div>
             </div>
-            <div class="control-group">
-              <label>WEAPON:</label>
-              <select id="input-weapon" class="styled-select">
-                <option value="bomb">Standard Bomb</option>
-                <option value="napalm">Napalm</option>
-              </select>
+
+            <div class="control-box weapon-box">
+              <div class="label">Weapon</div>
+              <div class="weapon-select-container">
+                <select id="input-weapon" class="styled-select">
+                  <option value="bomb">Standard Bomb</option>
+                  <option value="napalm">Napalm</option>
+                </select>
+              </div>
             </div>
-            <button id="btn-fire" class="btn danger">FIRE!</button>
+
+            <div class="control-box fire-box">
+              <button id="btn-fire" class="btn danger fire-btn">FIRE</button>
+            </div>
+
+            <div class="control-box angle-box">
+              <div class="label">Angle</div>
+              <div class="angle-controls">
+                <button class="tune-btn" id="btn-angle-minus">-</button>
+                <div class="value-box" id="angle-val">45</div>
+                <button class="tune-btn" id="btn-angle-plus">+</button>
+                <input type="range" id="input-angle" min="0" max="180" value="45" style="display:none;" />
+              </div>
+            </div>
+
+            <div class="control-box power-box">
+              <div class="power-bar-container">
+                <input type="range" id="input-power" min="10" max="150" value="50" class="classic-slider" />
+              </div>
+              <div class="power-readout">
+                <div class="label">Power</div>
+                <div class="power-controls">
+                  <button class="tune-btn" id="btn-power-minus">-</button>
+                  <div class="value-box" id="power-val">50</div>
+                  <button class="tune-btn" id="btn-power-plus">+</button>
+                </div>
+              </div>
+            </div>
+
           </div>
         </div>
       </div>

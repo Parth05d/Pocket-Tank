@@ -46,14 +46,23 @@ export function applyTerrainDelta(heightmap, impactX, impactY, radius) {
     const dx = x - impactX;
     const dy = Math.sqrt(radius * radius - dx * dx);
     
-    // In Canvas, +y is down. The terrain surface is at y = heightmap[x].
-    // Lower Y value = higher up visually.
+    // In Canvas, +y is down.
+    // The top of the explosion circle at this x is (impactY - dy)
+    // The bottom of the explosion circle at this x is (impactY + dy)
+    const explosionTop = impactY - dy;
     const craterBottomY = impactY + dy; 
     
-    // If surface is above the bottom of the crater, push it down to the crater bottom
-    if (heightmap[x] < craterBottomY) { 
-        heightmap[x] = craterBottomY;
-        changes.push({ x, y: craterBottomY });
+    // The dirt above explosionTop falls down.
+    // So if the current surface is at heightmap[x], and it's higher (smaller Y) than craterBottomY:
+    if (heightmap[x] < craterBottomY) {
+      // Calculate how much dirt was vaporized by this column of the explosion
+      const topOfVaporizedDirt = Math.max(heightmap[x], explosionTop);
+      const dirtVaporized = craterBottomY - topOfVaporizedDirt;
+      
+      if (dirtVaporized > 0) {
+        heightmap[x] += dirtVaporized;
+        changes.push({ x, y: heightmap[x] });
+      }
     }
   }
   

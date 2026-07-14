@@ -17,6 +17,18 @@ export class GameRenderer {
     this.damageTexts = [];
     this.pendingDamageSequences = [];
     this.isDamageTextAnimating = false;
+    this.particles = [];
+    this.screenShake = 0;
+
+    // Load Photorealistic Assets
+    this.imgTankChassis = new Image();
+    this.imgTankChassis.src = '/assets/tank_chassis.png';
+    this.imgTankTurret = new Image();
+    this.imgTankTurret.src = '/assets/tank_turret.png';
+    this.imgDirt = new Image();
+    this.imgDirt.src = '/assets/dirt_texture.png';
+    this.imgBg = new Image();
+    this.imgBg.src = '/assets/night_sky_bg.png';
   }
 
   initTerrain(seed, effects = []) {
@@ -36,15 +48,18 @@ export class GameRenderer {
   }
 
   setPlayers(players) {
-    // preserve current angle if we just get a state update
     for (let p of players) {
-      const existing = this.players.find(
-        (oldP) => oldP.socketId === p.socketId,
-      );
-      if (existing && existing.angle !== undefined) {
-        p.angle = existing.angle;
-      } else if (p.angle === undefined) {
-        p.angle = 45;
+      const existing = this.players.find((oldP) => oldP.socketId === p.socketId);
+      if (existing) {
+        if (existing.angle !== undefined) p.angle = existing.angle;
+        p.renderX = existing.renderX !== undefined ? existing.renderX : p.position.x;
+        p.renderY = existing.renderY !== undefined ? existing.renderY : p.position.y;
+        p.vy = existing.vy || 0;
+      } else {
+        if (p.angle === undefined) p.angle = 45;
+        p.renderX = p.position.x;
+        p.renderY = p.position.y;
+        p.vy = 0;
       }
     }
     this.players = players;
@@ -93,6 +108,21 @@ export class GameRenderer {
             alpha: 1,
             weapon: hit.weapon,
           };
+
+          this.screenShake = hit.weapon === "napalm" ? 25 : 15;
+
+          // Spawn realistic particles
+          const numParticles = hit.weapon === "napalm" ? 100 : 50;
+          for (let i = 0; i < numParticles; i++) {
+            this.particles.push({
+              x: hit.x,
+              y: hit.y,
+              vx: (Math.random() - 0.5) * 15,
+              vy: (Math.random() - 1) * 15,
+              life: 1.0 + Math.random() * 0.5,
+              color: Math.random() > 0.5 ? '#facc15' : '#ef4444' // sparks
+            });
+          }
 
           // Apply crater and tank movement IMMEDIATELY so it happens simultaneously with the blast
           this.applyDamage(terrainChanges, hit.newEffects);
@@ -212,12 +242,27 @@ export class GameRenderer {
   }
 
   draw() {
-    // 1. Sky Gradient
-    const skyGrad = this.ctx.createLinearGradient(0, 0, 0, this.height);
-    skyGrad.addColorStop(0, "#000000"); // Nero
-    skyGrad.addColorStop(1, "#282828"); // Nero 95%
-    this.ctx.fillStyle = skyGrad;
-    this.ctx.fillRect(0, 0, this.width, this.height);
+    this.ctx.save();
+    
+    // Screen Shake
+    if (this.screenShake > 0) {
+      const dx = (Math.random() - 0.5) * this.screenShake;
+      const dy = (Math.random() - 0.5) * this.screenShake;
+      this.ctx.translate(dx, dy);
+      this.screenShake *= 0.9;
+      if (this.screenShake < 0.5) this.screenShake = 0;
+    }
+
+    // 1. Sky / Background
+    if (this.imgBg.complete && this.imgBg.naturalWidth > 0) {
+      this.ctx.drawImage(this.imgBg, 0, 0, this.width, this.height);
+    } else {
+      const skyGrad = this.ctx.createLinearGradient(0, 0, 0, this.height);
+      skyGrad.addColorStop(0, "#000000"); 
+      skyGrad.addColorStop(1, "#282828"); 
+      this.ctx.fillStyle = skyGrad;
+      this.ctx.fillRect(0, 0, this.width, this.height);
+    }
 
     // 2. Terrain
     if (this.terrainMap) {
@@ -228,73 +273,41 @@ export class GameRenderer {
       }
       terrainPath.lineTo(this.width, this.height);
 
-      const terrGrad = this.ctx.createLinearGradient(
-        0,
-        this.height * 0.3,
-        0,
-        this.height,
-      );
-      terrGrad.addColorStop(0, "#CDC8BE"); // Sabbia (Sand/Dirt)
-      terrGrad.addColorStop(1, "#282828"); // Nero 95%
-      this.ctx.fillStyle = terrGrad;
+      if (this.imgDirt.complete && this.imgDirt.naturalWidth > 0) {
+        const pattern = this.ctx.createPattern(this.imgDirt, "repeat");
+        this.ctx.fillStyle = pattern || "#CDC8BE";
+      } else {
+        this.ctx.fillStyle = "#CDC8BE";
+      }
       this.ctx.fill(terrainPath);
 
       // Render terrain effects (e.g. burn marks)
       if (this.terrainEffects && this.terrainEffects.length > 0) {
         this.ctx.save();
-        this.ctx.clip(terrainPath); // Clip effects so they only appear on the terrain, not in the sky
+        this.ctx.clip(terrainPath);
 
         for (const effect of this.terrainEffects) {
+          const surfaceY = this.terrainMap[Math.floor(effect.x)] || this.height;
+          const burnGrad = this.ctx.createRadialGradient(
+            effect.x, surfaceY, 0,
+            effect.x, surfaceY, effect.radius
+          );
           if (effect.type === "burn") {
-            const surfaceY =
-              this.terrainMap[Math.floor(effect.x)] || this.height;
-            const burnGrad = this.ctx.createRadialGradient(
-              effect.x,
-              surfaceY,
-              0,
-              effect.x,
-              surfaceY,
-              effect.radius,
-            );
             burnGrad.addColorStop(0, "rgba(0, 0, 0, 0.85)");
             burnGrad.addColorStop(0.5, "rgba(0, 0, 0, 0.6)");
             burnGrad.addColorStop(1, "rgba(0, 0, 0, 0)");
-
-            this.ctx.fillStyle = burnGrad;
-            this.ctx.fillRect(
-              effect.x - effect.radius,
-              surfaceY - effect.radius,
-              effect.radius * 2,
-              effect.radius * 2,
-            );
           } else if (effect.type === "napalm") {
-            const surfaceY =
-              this.terrainMap[Math.floor(effect.x)] || this.height;
-            const burnGrad = this.ctx.createRadialGradient(
-              effect.x,
-              surfaceY,
-              0,
-              effect.x,
-              surfaceY,
-              effect.radius,
-            );
             burnGrad.addColorStop(0, "rgba(0, 0, 0, 0.95)");
             burnGrad.addColorStop(0.5, "rgba(20, 20, 20, 0.7)");
             burnGrad.addColorStop(1, "rgba(0, 0, 0, 0)");
-
-            this.ctx.fillStyle = burnGrad;
-            this.ctx.fillRect(
-              effect.x - effect.radius,
-              surfaceY - effect.radius,
-              effect.radius * 2,
-              effect.radius * 2,
-            );
           }
+          this.ctx.fillStyle = burnGrad;
+          this.ctx.fillRect(effect.x - effect.radius, surfaceY - effect.radius, effect.radius * 2, effect.radius * 2);
         }
         this.ctx.restore();
       }
 
-      this.ctx.strokeStyle = "#CDC8B9";
+      this.ctx.strokeStyle = "#22c55e"; // Grass line
       this.ctx.lineWidth = 4;
       this.ctx.lineJoin = "round";
       this.ctx.beginPath();
@@ -309,25 +322,53 @@ export class GameRenderer {
     for (const p of this.players) {
       if (!p.alive) continue;
 
-      // Bianco for Team A, Rosso for Team B
-      const teamColor = p.team === "A" ? "#FFFFFF" : "#F01E28";
-      const darkColor = p.team === "A" ? "#CDC8BE" : "#8A0F15";
+      // Ensure init
+      if (p.renderX === undefined) p.renderX = p.position.x;
+      if (p.renderY === undefined) p.renderY = p.position.y;
 
-      const tx = p.position.x;
-      const ty = p.position.y - 4; // lift slightly above ground
+      // Driving Physics
+      const dx = p.position.x - p.renderX;
+      if (Math.abs(dx) > 1) {
+        p.renderX += Math.sign(dx) * 2; // driving speed
+      } else {
+        p.renderX = p.position.x;
+      }
 
+      // Gravity Physics
+      const targetY = this.terrainMap && p.renderX >= 0 && p.renderX < this.width ? this.terrainMap[Math.floor(p.renderX)] : p.position.y;
+      if (p.renderY < targetY - 1) {
+        p.vy = (p.vy || 0) + 0.4; // gravity
+        p.renderY += p.vy;
+        if (p.renderY > targetY) {
+          p.renderY = targetY; // hit ground
+          p.vy = 0;
+        }
+      } else {
+        // driving up a hill or on the ground
+        p.renderY = targetY;
+        p.vy = 0;
+      }
+
+      const tx = p.renderX;
+      let ty = p.renderY - 4;
       let slopeAngle = 0;
+
       if (this.terrainMap) {
-        const x1 = Math.max(0, Math.floor(tx - 15));
-        const x2 = Math.min(this.width - 1, Math.floor(tx + 15));
+        const x1 = Math.max(0, Math.floor(tx - 20));
+        const x2 = Math.min(this.width - 1, Math.floor(tx + 20));
         const y1 = this.terrainMap[x1];
         const y2 = this.terrainMap[x2];
         slopeAngle = Math.atan2(y2 - y1, x2 - x1);
+        ty = (y1 + y2) / 2 - 4;
       }
 
       this.ctx.save();
       this.ctx.translate(tx, ty);
       this.ctx.rotate(slopeAngle);
+
+      // Bianco for Team A, Rosso for Team B
+      const teamColor = p.team === "A" ? "#FFFFFF" : "#F01E28";
+      const darkColor = p.team === "A" ? "#CDC8BE" : "#8A0F15";
 
       // Draw Treads
       this.ctx.fillStyle = "#334155";
@@ -379,25 +420,36 @@ export class GameRenderer {
       this.ctx.stroke();
 
       this.ctx.restore();
-
-      // Name & HP Tag Background
-      this.ctx.fillStyle = "rgba(0,0,0,0.6)";
-      this.ctx.beginPath();
-      if (this.ctx.roundRect) {
-        this.ctx.roundRect(tx - 30, ty - 38, 60, 16, 4);
-      } else {
-        this.ctx.rect(tx - 30, ty - 38, 60, 16);
-      }
-      this.ctx.fill();
-
-      this.ctx.fillStyle = "white";
-      this.ctx.font = "bold 10px Arial";
-      this.ctx.textAlign = "center";
-      this.ctx.textBaseline = "middle";
-      this.ctx.fillText(`${p.nickname} (${p.score})`, tx, ty - 30);
     }
 
-    // 4. Smoke Trail
+    // 4. Custom Physics Particles
+    for (let p of this.particles) {
+      p.vy += 0.4; // gravity
+      p.x += p.vx;
+      p.y += p.vy;
+      p.life -= 0.02;
+
+      const px = Math.floor(p.x);
+      if (px >= 0 && px < this.width && this.terrainMap) {
+        if (p.y >= this.terrainMap[px]) {
+          p.y = this.terrainMap[px];
+          p.vy *= -0.5;
+          p.vx *= 0.8; 
+        }
+      }
+
+      this.ctx.globalCompositeOperation = "lighter";
+      this.ctx.fillStyle = p.color;
+      this.ctx.globalAlpha = Math.max(0, p.life);
+      this.ctx.beginPath();
+      this.ctx.arc(p.x, p.y, 2, 0, Math.PI*2);
+      this.ctx.fill();
+      this.ctx.globalAlpha = 1.0;
+      this.ctx.globalCompositeOperation = "source-over";
+    }
+    this.particles = this.particles.filter(p => p.life > 0);
+
+    // 5. Smoke Trail
     for (let s of this.smokeParticles) {
       this.ctx.fillStyle = `rgba(200, 200, 200, ${Math.max(0, s.life * 0.5)})`;
       this.ctx.beginPath();
@@ -405,16 +457,10 @@ export class GameRenderer {
       this.ctx.fill();
     }
 
-    // 5. Projectile (Missile)
-    if (
-      this.projectilePath &&
-      this.projectileIndex < this.projectilePath.length
-    ) {
+    // 6. Projectile
+    if (this.projectilePath && this.projectileIndex < this.projectilePath.length) {
       const point = this.projectilePath[this.projectileIndex];
-      const prevPoint =
-        this.projectileIndex > 0
-          ? this.projectilePath[this.projectileIndex - 1]
-          : point;
+      const prevPoint = this.projectileIndex > 0 ? this.projectilePath[this.projectileIndex - 1] : point;
 
       let angle = Math.atan2(point.y - prevPoint.y, point.x - prevPoint.x);
 
@@ -422,81 +468,57 @@ export class GameRenderer {
       this.ctx.translate(point.x, point.y);
       this.ctx.rotate(angle);
 
-      // Draw Missile
+      this.ctx.shadowBlur = 15;
+      this.ctx.shadowColor = "#ef4444";
+
       this.ctx.fillStyle = "#fef08a";
       this.ctx.beginPath();
-      this.ctx.moveTo(8, 0); // nose
+      this.ctx.moveTo(8, 0); 
       this.ctx.lineTo(-4, 4);
       this.ctx.lineTo(-4, -4);
       this.ctx.closePath();
       this.ctx.fill();
 
-      // Engine flame
       this.ctx.fillStyle = "#ef4444";
       this.ctx.beginPath();
       this.ctx.moveTo(-4, 2);
-      this.ctx.lineTo(-10 - Math.random() * 4, 0); // flickering tail
+      this.ctx.lineTo(-10 - Math.random() * 4, 0); 
       this.ctx.lineTo(-4, -2);
       this.ctx.closePath();
       this.ctx.fill();
-
+      
+      this.ctx.shadowBlur = 0; 
       this.ctx.restore();
     }
 
-    // 6. Explosion
+    // 7. Explosion
     if (this.explosion) {
+      const isNapalm = this.explosion.weapon === "napalm";
       const grad = this.ctx.createRadialGradient(
-        this.explosion.x,
-        this.explosion.y,
-        0,
-        this.explosion.x,
-        this.explosion.y,
-        this.explosion.radius,
+        this.explosion.x, this.explosion.y, 0,
+        this.explosion.x, this.explosion.y, this.explosion.radius
       );
 
-      if (this.explosion.weapon === "napalm") {
-        grad.addColorStop(
-          0,
-          `rgba(20, 20, 20, ${Math.max(0, this.explosion.alpha)})`,
-        );
-        grad.addColorStop(
-          0.2,
-          `rgba(40, 40, 40, ${Math.max(0, this.explosion.alpha)})`,
-        );
-        grad.addColorStop(
-          0.6,
-          `rgba(10, 10, 10, ${Math.max(0, this.explosion.alpha)})`,
-        );
+      if (isNapalm) {
+        grad.addColorStop(0, `rgba(255, 100, 0, ${Math.max(0, this.explosion.alpha)})`);
+        grad.addColorStop(0.4, `rgba(200, 0, 0, ${Math.max(0, this.explosion.alpha)})`);
         grad.addColorStop(1, `rgba(0, 0, 0, 0)`);
       } else {
-        grad.addColorStop(
-          0,
-          `rgba(255, 255, 255, ${Math.max(0, this.explosion.alpha)})`,
-        );
-        grad.addColorStop(
-          0.2,
-          `rgba(250, 204, 21, ${Math.max(0, this.explosion.alpha)})`,
-        );
-        grad.addColorStop(
-          0.6,
-          `rgba(239, 68, 68, ${Math.max(0, this.explosion.alpha)})`,
-        );
+        grad.addColorStop(0, `rgba(255, 255, 255, ${Math.max(0, this.explosion.alpha)})`);
+        grad.addColorStop(0.2, `rgba(250, 204, 21, ${Math.max(0, this.explosion.alpha)})`);
+        grad.addColorStop(0.6, `rgba(239, 68, 68, ${Math.max(0, this.explosion.alpha)})`);
         grad.addColorStop(1, `rgba(0, 0, 0, 0)`);
       }
 
+      this.ctx.globalCompositeOperation = "lighter";
       this.ctx.fillStyle = grad;
       this.ctx.beginPath();
-      this.ctx.arc(
-        this.explosion.x,
-        this.explosion.y,
-        this.explosion.radius,
-        0,
-        Math.PI * 2,
-      );
+      this.ctx.arc(this.explosion.x, this.explosion.y, this.explosion.radius, 0, Math.PI * 2);
       this.ctx.fill();
+      this.ctx.globalCompositeOperation = "source-over";
     }
 
-    // 7. Damage Texts
+    // 8. Damage Texts
     if (this.damageTexts && this.damageTexts.length > 0) {
       this.ctx.font = "bold 24px monospace";
       this.ctx.textAlign = "center";
@@ -507,7 +529,8 @@ export class GameRenderer {
         }
       }
     }
-
+    
+    this.ctx.restore();
     requestAnimationFrame(() => this.draw());
   }
 }

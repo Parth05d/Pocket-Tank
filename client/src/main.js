@@ -15,8 +15,10 @@ const inputRoomCode = document.getElementById("room-code");
 const displayRoomCode = document.getElementById("display-room-code");
 const listPlayers = document.getElementById("players-list");
 
-const teamAStatus = document.getElementById("team-a-status");
-const teamBStatus = document.getElementById("team-b-status");
+const teamAName = document.getElementById("team-a-name");
+const teamAScore = document.getElementById("team-a-score");
+const teamBName = document.getElementById("team-b-name");
+const teamBScore = document.getElementById("team-b-score");
 const turnIndicator = document.getElementById("turn-indicator");
 const controls = document.getElementById("controls");
 const inputAngle = document.getElementById("input-angle");
@@ -92,7 +94,7 @@ socket.on("turn-started", (data) => {
   if (myTurn) {
     controls.classList.remove("disabled");
     turnIndicator.textContent = `YOUR TURN! (Volley ${data.currentVolley}/${data.maxVolleys})`;
-    turnIndicator.style.color = "#22c55e";
+    
     const myPlayer = renderer.players.find((p) => p.socketId === socket.id);
     if (myPlayer) {
       movesVal.textContent = myPlayer.moves !== undefined ? myPlayer.moves : 4;
@@ -100,7 +102,7 @@ socket.on("turn-started", (data) => {
   } else {
     controls.classList.add("disabled");
     turnIndicator.textContent = `Waiting for opponent... (Volley ${data.currentVolley}/${data.maxVolleys})`;
-    turnIndicator.style.color = "white";
+    
   }
 });
 
@@ -253,12 +255,14 @@ function updatePlayersList(players) {
 }
 
 function updateHUD(players) {
-  let scoreA = 0;
-  let scoreB = 0;
-  players.forEach((p) => {
-    if (p.team === "A") scoreA += p.score;
-    if (p.team === "B") scoreB += p.score;
-  });
-  teamAStatus.textContent = `Team A: ${scoreA} PTS`;
-  teamBStatus.textContent = `Team B: ${scoreB} PTS`;
+  const pA = players.find(p => p.team === "A");
+  const pB = players.find(p => p.team === "B");
+  if (pA) {
+    teamAName.textContent = pA.nickname;
+    teamAScore.textContent = pA.score;
+  }
+  if (pB) {
+    teamBName.textContent = pB.nickname;
+    teamBScore.textContent = pB.score;
+  }
 }
