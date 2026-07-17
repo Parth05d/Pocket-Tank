@@ -130,6 +130,12 @@ input[type="text"]:focus { border-color: var(--accent); }
   overflow: hidden;
 }
 
+#game-canvas {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
 .classic-hud {
   position: absolute;
   top: 0;
@@ -336,6 +342,7 @@ input[type="text"]:focus { border-color: var(--accent); }
 .classic-slider {
   width: 100%;
   -webkit-appearance: none;
+  appearance: none;
   background: transparent;
   margin: 0;
 }
@@ -346,6 +353,7 @@ input[type="text"]:focus { border-color: var(--accent); }
 }
 .classic-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
+  appearance: none;
   height: 12px;
   width: 15px;
   background: #ff0000; /* Bright red thumb */

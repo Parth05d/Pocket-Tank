@@ -22,13 +22,13 @@ export class GameRenderer {
 
     // Load Photorealistic Assets
     this.imgTankChassis = new Image();
-    this.imgTankChassis.src = '/assets/tank_chassis.png';
+    this.imgTankChassis.src = "/assets/tank_chassis.png";
     this.imgTankTurret = new Image();
-    this.imgTankTurret.src = '/assets/tank_turret.png';
+    this.imgTankTurret.src = "/assets/tank_turret.png";
     this.imgDirt = new Image();
-    this.imgDirt.src = '/assets/dirt_texture.png';
+    this.imgDirt.src = "/assets/dirt_texture.png";
     this.imgBg = new Image();
-    this.imgBg.src = '/assets/night_sky_bg.png';
+    this.imgBg.src = "/assets/night_sky_bg.png";
   }
 
   initTerrain(seed, effects = []) {
@@ -49,11 +49,15 @@ export class GameRenderer {
 
   setPlayers(players) {
     for (let p of players) {
-      const existing = this.players.find((oldP) => oldP.socketId === p.socketId);
+      const existing = this.players.find(
+        (oldP) => oldP.socketId === p.socketId,
+      );
       if (existing) {
         if (existing.angle !== undefined) p.angle = existing.angle;
-        p.renderX = existing.renderX !== undefined ? existing.renderX : p.position.x;
-        p.renderY = existing.renderY !== undefined ? existing.renderY : p.position.y;
+        p.renderX =
+          existing.renderX !== undefined ? existing.renderX : p.position.x;
+        p.renderY =
+          existing.renderY !== undefined ? existing.renderY : p.position.y;
         p.vy = existing.vy || 0;
       } else {
         if (p.angle === undefined) p.angle = 45;
@@ -120,7 +124,7 @@ export class GameRenderer {
               vx: (Math.random() - 0.5) * 15,
               vy: (Math.random() - 1) * 15,
               life: 1.0 + Math.random() * 0.5,
-              color: Math.random() > 0.5 ? '#facc15' : '#ef4444' // sparks
+              color: Math.random() > 0.5 ? "#facc15" : "#ef4444", // sparks
             });
           }
 
@@ -243,7 +247,7 @@ export class GameRenderer {
 
   draw() {
     this.ctx.save();
-    
+
     // Screen Shake
     if (this.screenShake > 0) {
       const dx = (Math.random() - 0.5) * this.screenShake;
@@ -258,8 +262,8 @@ export class GameRenderer {
       this.ctx.drawImage(this.imgBg, 0, 0, this.width, this.height);
     } else {
       const skyGrad = this.ctx.createLinearGradient(0, 0, 0, this.height);
-      skyGrad.addColorStop(0, "#000000"); 
-      skyGrad.addColorStop(1, "#282828"); 
+      skyGrad.addColorStop(0, "#000000");
+      skyGrad.addColorStop(1, "#282828");
       this.ctx.fillStyle = skyGrad;
       this.ctx.fillRect(0, 0, this.width, this.height);
     }
@@ -289,8 +293,12 @@ export class GameRenderer {
         for (const effect of this.terrainEffects) {
           const surfaceY = this.terrainMap[Math.floor(effect.x)] || this.height;
           const burnGrad = this.ctx.createRadialGradient(
-            effect.x, surfaceY, 0,
-            effect.x, surfaceY, effect.radius
+            effect.x,
+            surfaceY,
+            0,
+            effect.x,
+            surfaceY,
+            effect.radius,
           );
           if (effect.type === "burn") {
             burnGrad.addColorStop(0, "rgba(0, 0, 0, 0.85)");
@@ -302,7 +310,12 @@ export class GameRenderer {
             burnGrad.addColorStop(1, "rgba(0, 0, 0, 0)");
           }
           this.ctx.fillStyle = burnGrad;
-          this.ctx.fillRect(effect.x - effect.radius, surfaceY - effect.radius, effect.radius * 2, effect.radius * 2);
+          this.ctx.fillRect(
+            effect.x - effect.radius,
+            surfaceY - effect.radius,
+            effect.radius * 2,
+            effect.radius * 2,
+          );
         }
         this.ctx.restore();
       }
@@ -326,27 +339,34 @@ export class GameRenderer {
       if (p.renderX === undefined) p.renderX = p.position.x;
       if (p.renderY === undefined) p.renderY = p.position.y;
 
-      // Driving Physics
-      const dx = p.position.x - p.renderX;
-      if (Math.abs(dx) > 1) {
-        p.renderX += Math.sign(dx) * 2; // driving speed
-      } else {
-        p.renderX = p.position.x;
-      }
+      const targetY =
+        this.terrainMap && p.renderX >= 0 && p.renderX < this.width
+          ? this.terrainMap[Math.floor(p.renderX)]
+          : p.position.y;
 
-      // Gravity Physics
-      const targetY = this.terrainMap && p.renderX >= 0 && p.renderX < this.width ? this.terrainMap[Math.floor(p.renderX)] : p.position.y;
-      if (p.renderY < targetY - 1) {
-        p.vy = (p.vy || 0) + 0.4; // gravity
+      // If the tank is more than 5 pixels above the ground, it's falling.
+      const isGrounded = p.renderY >= targetY - 5;
+
+      if (!isGrounded) {
+        // Gravity Physics (Falling)
+        p.vy = (p.vy || 0) + 0.4;
         p.renderY += p.vy;
         if (p.renderY > targetY) {
           p.renderY = targetY; // hit ground
           p.vy = 0;
         }
       } else {
-        // driving up a hill or on the ground
+        // Grounded Physics
         p.renderY = targetY;
         p.vy = 0;
+
+        // Driving Physics (Only drive if grounded)
+        const dx = p.position.x - p.renderX;
+        if (Math.abs(dx) > 1) {
+          p.renderX += Math.sign(dx) * 2; // driving speed
+        } else {
+          p.renderX = p.position.x;
+        }
       }
 
       const tx = p.renderX;
@@ -359,7 +379,6 @@ export class GameRenderer {
         const y1 = this.terrainMap[x1];
         const y2 = this.terrainMap[x2];
         slopeAngle = Math.atan2(y2 - y1, x2 - x1);
-        ty = (y1 + y2) / 2 - 4;
       }
 
       this.ctx.save();
@@ -434,7 +453,7 @@ export class GameRenderer {
         if (p.y >= this.terrainMap[px]) {
           p.y = this.terrainMap[px];
           p.vy *= -0.5;
-          p.vx *= 0.8; 
+          p.vx *= 0.8;
         }
       }
 
@@ -442,12 +461,12 @@ export class GameRenderer {
       this.ctx.fillStyle = p.color;
       this.ctx.globalAlpha = Math.max(0, p.life);
       this.ctx.beginPath();
-      this.ctx.arc(p.x, p.y, 2, 0, Math.PI*2);
+      this.ctx.arc(p.x, p.y, 2, 0, Math.PI * 2);
       this.ctx.fill();
       this.ctx.globalAlpha = 1.0;
       this.ctx.globalCompositeOperation = "source-over";
     }
-    this.particles = this.particles.filter(p => p.life > 0);
+    this.particles = this.particles.filter((p) => p.life > 0);
 
     // 5. Smoke Trail
     for (let s of this.smokeParticles) {
@@ -458,9 +477,15 @@ export class GameRenderer {
     }
 
     // 6. Projectile
-    if (this.projectilePath && this.projectileIndex < this.projectilePath.length) {
+    if (
+      this.projectilePath &&
+      this.projectileIndex < this.projectilePath.length
+    ) {
       const point = this.projectilePath[this.projectileIndex];
-      const prevPoint = this.projectileIndex > 0 ? this.projectilePath[this.projectileIndex - 1] : point;
+      const prevPoint =
+        this.projectileIndex > 0
+          ? this.projectilePath[this.projectileIndex - 1]
+          : point;
 
       let angle = Math.atan2(point.y - prevPoint.y, point.x - prevPoint.x);
 
@@ -473,7 +498,7 @@ export class GameRenderer {
 
       this.ctx.fillStyle = "#fef08a";
       this.ctx.beginPath();
-      this.ctx.moveTo(8, 0); 
+      this.ctx.moveTo(8, 0);
       this.ctx.lineTo(-4, 4);
       this.ctx.lineTo(-4, -4);
       this.ctx.closePath();
@@ -482,12 +507,12 @@ export class GameRenderer {
       this.ctx.fillStyle = "#ef4444";
       this.ctx.beginPath();
       this.ctx.moveTo(-4, 2);
-      this.ctx.lineTo(-10 - Math.random() * 4, 0); 
+      this.ctx.lineTo(-10 - Math.random() * 4, 0);
       this.ctx.lineTo(-4, -2);
       this.ctx.closePath();
       this.ctx.fill();
-      
-      this.ctx.shadowBlur = 0; 
+
+      this.ctx.shadowBlur = 0;
       this.ctx.restore();
     }
 
@@ -495,25 +520,50 @@ export class GameRenderer {
     if (this.explosion) {
       const isNapalm = this.explosion.weapon === "napalm";
       const grad = this.ctx.createRadialGradient(
-        this.explosion.x, this.explosion.y, 0,
-        this.explosion.x, this.explosion.y, this.explosion.radius
+        this.explosion.x,
+        this.explosion.y,
+        0,
+        this.explosion.x,
+        this.explosion.y,
+        this.explosion.radius,
       );
 
       if (isNapalm) {
-        grad.addColorStop(0, `rgba(255, 100, 0, ${Math.max(0, this.explosion.alpha)})`);
-        grad.addColorStop(0.4, `rgba(200, 0, 0, ${Math.max(0, this.explosion.alpha)})`);
+        grad.addColorStop(
+          0,
+          `rgba(255, 100, 0, ${Math.max(0, this.explosion.alpha)})`,
+        );
+        grad.addColorStop(
+          0.4,
+          `rgba(200, 0, 0, ${Math.max(0, this.explosion.alpha)})`,
+        );
         grad.addColorStop(1, `rgba(0, 0, 0, 0)`);
       } else {
-        grad.addColorStop(0, `rgba(255, 255, 255, ${Math.max(0, this.explosion.alpha)})`);
-        grad.addColorStop(0.2, `rgba(250, 204, 21, ${Math.max(0, this.explosion.alpha)})`);
-        grad.addColorStop(0.6, `rgba(239, 68, 68, ${Math.max(0, this.explosion.alpha)})`);
+        grad.addColorStop(
+          0,
+          `rgba(255, 255, 255, ${Math.max(0, this.explosion.alpha)})`,
+        );
+        grad.addColorStop(
+          0.2,
+          `rgba(250, 204, 21, ${Math.max(0, this.explosion.alpha)})`,
+        );
+        grad.addColorStop(
+          0.6,
+          `rgba(239, 68, 68, ${Math.max(0, this.explosion.alpha)})`,
+        );
         grad.addColorStop(1, `rgba(0, 0, 0, 0)`);
       }
 
       this.ctx.globalCompositeOperation = "lighter";
       this.ctx.fillStyle = grad;
       this.ctx.beginPath();
-      this.ctx.arc(this.explosion.x, this.explosion.y, this.explosion.radius, 0, Math.PI * 2);
+      this.ctx.arc(
+        this.explosion.x,
+        this.explosion.y,
+        this.explosion.radius,
+        0,
+        Math.PI * 2,
+      );
       this.ctx.fill();
       this.ctx.globalCompositeOperation = "source-over";
     }
@@ -529,7 +579,7 @@ export class GameRenderer {
         }
       }
     }
-    
+
     this.ctx.restore();
     requestAnimationFrame(() => this.draw());
   }

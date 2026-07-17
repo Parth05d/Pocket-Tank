@@ -266,10 +266,23 @@ export class Room {
       const finalPower =
         bestPower + (Math.random() * errorMargin * 2 - errorMargin);
 
-      this.handleFire(botPlayer.socketId, {
+      // Update aim so clients can see the barrel move
+      this.handleAim(botPlayer.socketId, {
         angle: finalAngle,
         power: finalPower,
       });
+
+      setTimeout(() => {
+        if (this.status !== "in-progress") return;
+        if (this.turnOrder[this.currentTurnIndex] !== botPlayer.socketId)
+          return;
+
+        this.handleFire(botPlayer.socketId, {
+          angle: finalAngle,
+          power: finalPower,
+          weapon: "bomb",
+        });
+      }, 500);
     }, 2000);
   }
 

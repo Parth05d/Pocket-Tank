@@ -14,87 +14,100 @@ export function generateTerrain(seed, width, height) {
   const heightmap = new Array(width);
   const numWaves = 4;
   const waves = [];
-  
-  for(let i = 0; i < numWaves; i++) {
+
+  for (let i = 0; i < numWaves; i++) {
     waves.push({
-      freq: (random() * 0.015) + 0.002,
-      amp: (random() * 60) + 10,
-      phase: random() * Math.PI * 2
+      freq: random() * 0.015 + 0.002,
+      amp: random() * 60 + 10,
+      phase: random() * Math.PI * 2,
     });
   }
-  
-  const baseHeight = height * 0.6; 
+
+  const baseHeight = height * 0.6;
 
   for (let x = 0; x < width; x++) {
     let yOffset = 0;
-    for(let w of waves) {
+    for (let w of waves) {
       yOffset += Math.sin(x * w.freq + w.phase) * w.amp;
     }
     heightmap[x] = Math.max(10, Math.min(height - 10, baseHeight + yOffset));
   }
-  
+
   return heightmap;
 }
 
 export function applyTerrainDelta(heightmap, impactX, impactY, radius) {
   const minX = Math.max(0, Math.floor(impactX - radius));
   const maxX = Math.min(heightmap.length - 1, Math.ceil(impactX + radius));
-  
+
   const changes = [];
-  
+  const BEDROCK_Y = 950;
+
   for (let x = minX; x <= maxX; x++) {
     const dx = x - impactX;
     const dy = Math.sqrt(radius * radius - dx * dx);
-    
+
     // In Canvas, +y is down.
     // The top of the explosion circle at this x is (impactY - dy)
     // The bottom of the explosion circle at this x is (impactY + dy)
     const explosionTop = impactY - dy;
-    const craterBottomY = impactY + dy; 
-    
+    const craterBottomY = impactY + dy;
+
     // The dirt above explosionTop falls down.
     // So if the current surface is at heightmap[x], and it's higher (smaller Y) than craterBottomY:
     if (heightmap[x] < craterBottomY) {
       // Calculate how much dirt was vaporized by this column of the explosion
       const topOfVaporizedDirt = Math.max(heightmap[x], explosionTop);
       const dirtVaporized = craterBottomY - topOfVaporizedDirt;
-      
+
       if (dirtVaporized > 0) {
-        heightmap[x] += dirtVaporized;
-        changes.push({ x, y: heightmap[x] });
+        let newY = heightmap[x] + dirtVaporized;
+        if (newY > BEDROCK_Y) {
+          newY = BEDROCK_Y;
+        }
+        if (newY !== heightmap[x]) {
+          heightmap[x] = newY;
+          changes.push({ x, y: heightmap[x] });
+        }
       }
     }
   }
-  
+
   return changes;
 }
 
-export function calculateTrajectory(startX, startY, angleDegrees, power, wind, gravity) {
-  // Angle: 0 is right, 90 is straight up, 180 is left. 
+export function calculateTrajectory(
+  startX,
+  startY,
+  angleDegrees,
+  power,
+  wind,
+  gravity,
+) {
+  // Angle: 0 is right, 90 is straight up, 180 is left.
   // Wait, standard math: 0 is right, 90 up. But Canvas +y is down.
   // So angle needs to be converted.
   const angleRad = -angleDegrees * (Math.PI / 180);
-  
+
   let velX = Math.cos(angleRad) * power;
   let velY = Math.sin(angleRad) * power;
-  
+
   const path = [];
   let x = startX;
   let y = startY;
-  
-  let time = 0;
-  const dt = 0.5; // step size
-  
-  // Simulate for max 500 steps to avoid infinite loops
-  for(let i = 0; i < 500; i++) {
+
+  const dt = 0.2; // step size - reduced from 0.5 to slow down projectile animation
+
+  // Simulate for max 1500 steps to avoid infinite loops
+  for (let i = 0; i < 1500; i++) {
     path.push({ x, y });
-    
+
     x += velX * dt;
     y += velY * dt;
-    
+
     velX += wind * dt;
     velY += gravity * dt; // gravity is positive (pulls down)
   }
-  
+
   return path;
 }
