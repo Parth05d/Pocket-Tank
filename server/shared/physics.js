@@ -37,14 +37,23 @@ export function generateTerrain(seed, width, height) {
 }
 
 export function applyTerrainDelta(heightmap, impactX, impactY, radius) {
-  const minX = Math.max(0, Math.floor(impactX - radius));
-  const maxX = Math.min(heightmap.length - 1, Math.ceil(impactX + radius));
+  const maxJaggedRadius = radius * 1.15;
+  const minX = Math.max(0, Math.floor(impactX - maxJaggedRadius));
+  const maxX = Math.min(heightmap.length - 1, Math.ceil(impactX + maxJaggedRadius));
   
   const changes = [];
   
   for (let x = minX; x <= maxX; x++) {
     const dx = x - impactX;
-    const dy = Math.sqrt(radius * radius - dx * dx);
+    
+    // Deterministic pseudo-random noise based on coordinates
+    const seed = (x * 12.9898 + impactX * 78.233) % 1;
+    const noise = Math.abs(Math.sin(seed) * 43758.5453123) % 1;
+    const jaggedRadius = radius + (noise - 0.5) * radius * 0.2; // +/- 10% noise
+    
+    if (Math.abs(dx) > jaggedRadius) continue;
+    
+    const dy = Math.sqrt(jaggedRadius * jaggedRadius - dx * dx);
     
     // In Canvas, +y is down.
     // The top of the explosion circle at this x is (impactY - dy)

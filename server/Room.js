@@ -377,6 +377,8 @@ export class Room {
 
     // Data contains: { angle, power, weapon }
     const { angle, power, weapon } = data;
+    if (angle !== undefined) player.angle = angle;
+    if (power !== undefined) player.power = power;
     const isNapalm = weapon === "napalm";
 
     // 1. Calculate trajectory until hit

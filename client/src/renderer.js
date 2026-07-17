@@ -8,6 +8,7 @@ export class GameRenderer {
     this.height = this.canvas.height;
 
     this.terrainMap = null;
+    this.isGrass = [];
     this.terrainEffects = [];
     this.players = [];
     this.projectilePath = null;
@@ -33,6 +34,7 @@ export class GameRenderer {
 
   initTerrain(seed, effects = []) {
     this.terrainMap = generateTerrain(seed, this.width, this.height);
+    this.isGrass = new Array(this.width).fill(true);
     this.terrainEffects = effects;
   }
 
@@ -40,6 +42,7 @@ export class GameRenderer {
     if (this.terrainMap && terrainChanges) {
       for (const change of terrainChanges) {
         this.terrainMap[change.x] = change.y;
+        this.isGrass[change.x] = false;
       }
     }
     if (newEffects) {
@@ -51,7 +54,6 @@ export class GameRenderer {
     for (let p of players) {
       const existing = this.players.find((oldP) => oldP.socketId === p.socketId);
       if (existing) {
-        if (existing.angle !== undefined) p.angle = existing.angle;
         p.renderX = existing.renderX !== undefined ? existing.renderX : p.position.x;
         p.renderY = existing.renderY !== undefined ? existing.renderY : p.position.y;
         p.vy = existing.vy || 0;
@@ -111,16 +113,37 @@ export class GameRenderer {
 
           this.screenShake = hit.weapon === "napalm" ? 25 : 15;
 
-          // Spawn realistic particles
-          const numParticles = hit.weapon === "napalm" ? 100 : 50;
+          // Spawn classic dirt chunks
+          const isNapalm = hit.weapon === "napalm";
+          const numParticles = isNapalm ? 150 : 80;
+          
           for (let i = 0; i < numParticles; i++) {
+            const angle = Math.random() * Math.PI - Math.PI; // upward hemisphere
+            const speed = Math.random() * (hit.radius || 40) * 0.3 + 2;
+            
+            let color;
+            if (isNapalm) {
+              const r = Math.random();
+              if (r < 0.3) color = '#ef4444'; // red
+              else if (r < 0.6) color = '#f97316'; // orange
+              else if (r < 0.8) color = '#fbbf24'; // yellow
+              else color = '#1c1917'; // dark smoke
+            } else {
+              const r = Math.random();
+              if (r < 0.2) color = '#22c55e'; // grass green
+              else if (r < 0.6) color = '#573b22'; // dark dirt
+              else color = '#785532'; // light dirt
+            }
+
             this.particles.push({
               x: hit.x,
               y: hit.y,
-              vx: (Math.random() - 0.5) * 15,
-              vy: (Math.random() - 1) * 15,
-              life: 1.0 + Math.random() * 0.5,
-              color: Math.random() > 0.5 ? '#facc15' : '#ef4444' // sparks
+              vx: Math.cos(angle) * speed,
+              vy: Math.sin(angle) * speed,
+              gravity: 0.3,
+              life: Math.random() * 60 + 20, // frames
+              size: Math.random() * 4 + 2, // 2-5px square
+              color: color
             });
           }
 
@@ -195,9 +218,14 @@ export class GameRenderer {
 
       if (this.explosion) {
         keepAnimating = true;
-        // Explode slower
-        this.explosion.radius += isNapalm ? 0.5 : 1;
-        this.explosion.alpha -= isNapalm ? 0.005 : 0.02; // Napalm lasts longer
+        
+        const growthRate = isNapalm ? 2.5 : 4;
+        this.explosion.radius += growthRate;
+        if (this.explosion.radius > this.explosion.maxRadius) {
+            this.explosion.radius = this.explosion.maxRadius;
+        }
+        
+        this.explosion.alpha -= isNapalm ? 0.015 : 0.03; 
 
         // update smoke
         for (let s of this.smokeParticles) {
@@ -311,9 +339,19 @@ export class GameRenderer {
       this.ctx.lineWidth = 4;
       this.ctx.lineJoin = "round";
       this.ctx.beginPath();
+      
+      let wasGrass = false;
       for (let x = 0; x < this.width; x++) {
-        if (x === 0) this.ctx.moveTo(x, this.terrainMap[x]);
-        else this.ctx.lineTo(x, this.terrainMap[x]);
+        if (this.isGrass[x]) {
+          if (!wasGrass || x === 0) {
+            this.ctx.moveTo(x, this.terrainMap[x]);
+          } else {
+            this.ctx.lineTo(x, this.terrainMap[x]);
+          }
+          wasGrass = true;
+        } else {
+          wasGrass = false;
+        }
       }
       this.ctx.stroke();
     }
@@ -359,7 +397,7 @@ export class GameRenderer {
         const y1 = this.terrainMap[x1];
         const y2 = this.terrainMap[x2];
         slopeAngle = Math.atan2(y2 - y1, x2 - x1);
-        ty = (y1 + y2) / 2 - 4;
+        ty = p.renderY - 4;
       }
 
       this.ctx.save();
@@ -424,28 +462,22 @@ export class GameRenderer {
 
     // 4. Custom Physics Particles
     for (let p of this.particles) {
-      p.vy += 0.4; // gravity
+      p.vy += p.gravity;
       p.x += p.vx;
       p.y += p.vy;
-      p.life -= 0.02;
+      p.life -= 1;
 
       const px = Math.floor(p.x);
       if (px >= 0 && px < this.width && this.terrainMap) {
         if (p.y >= this.terrainMap[px]) {
           p.y = this.terrainMap[px];
-          p.vy *= -0.5;
-          p.vx *= 0.8; 
+          p.vy *= -0.4; // bounce
+          p.vx *= 0.6; // friction
         }
       }
 
-      this.ctx.globalCompositeOperation = "lighter";
       this.ctx.fillStyle = p.color;
-      this.ctx.globalAlpha = Math.max(0, p.life);
-      this.ctx.beginPath();
-      this.ctx.arc(p.x, p.y, 2, 0, Math.PI*2);
-      this.ctx.fill();
-      this.ctx.globalAlpha = 1.0;
-      this.ctx.globalCompositeOperation = "source-over";
+      this.ctx.fillRect(Math.floor(p.x), Math.floor(p.y), p.size, p.size);
     }
     this.particles = this.particles.filter(p => p.life > 0);
 
@@ -494,28 +526,22 @@ export class GameRenderer {
     // 7. Explosion
     if (this.explosion) {
       const isNapalm = this.explosion.weapon === "napalm";
-      const grad = this.ctx.createRadialGradient(
-        this.explosion.x, this.explosion.y, 0,
-        this.explosion.x, this.explosion.y, this.explosion.radius
-      );
-
-      if (isNapalm) {
-        grad.addColorStop(0, `rgba(255, 100, 0, ${Math.max(0, this.explosion.alpha)})`);
-        grad.addColorStop(0.4, `rgba(200, 0, 0, ${Math.max(0, this.explosion.alpha)})`);
-        grad.addColorStop(1, `rgba(0, 0, 0, 0)`);
-      } else {
-        grad.addColorStop(0, `rgba(255, 255, 255, ${Math.max(0, this.explosion.alpha)})`);
-        grad.addColorStop(0.2, `rgba(250, 204, 21, ${Math.max(0, this.explosion.alpha)})`);
-        grad.addColorStop(0.6, `rgba(239, 68, 68, ${Math.max(0, this.explosion.alpha)})`);
-        grad.addColorStop(1, `rgba(0, 0, 0, 0)`);
-      }
-
-      this.ctx.globalCompositeOperation = "lighter";
-      this.ctx.fillStyle = grad;
+      const progress = 1 - Math.max(0, this.explosion.alpha); // 0.0 to 1.0
+      
       this.ctx.beginPath();
       this.ctx.arc(this.explosion.x, this.explosion.y, this.explosion.radius, 0, Math.PI * 2);
+      
+      if (isNapalm) {
+        if (progress < 0.2) this.ctx.fillStyle = "#ffffff";
+        else if (progress < 0.5) this.ctx.fillStyle = "#facc15";
+        else if (progress < 0.8) this.ctx.fillStyle = "#ef4444";
+        else this.ctx.fillStyle = "#7f1d1d";
+      } else {
+        if (progress < 0.3) this.ctx.fillStyle = "#ffffff";
+        else if (progress < 0.7) this.ctx.fillStyle = "#facc15";
+        else this.ctx.fillStyle = "#ef4444";
+      }
       this.ctx.fill();
-      this.ctx.globalCompositeOperation = "source-over";
     }
 
     // 8. Damage Texts
